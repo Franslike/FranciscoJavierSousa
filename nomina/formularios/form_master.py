@@ -1,341 +1,302 @@
-import os
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, Menu, messagebox
+from PIL import Image, ImageTk
 from util.db_manager import DatabaseManager
 from util.config import DB_CONFIG
 from datetime import datetime
-from decimal import Decimal
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import inch
 
 class MainApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, username=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.db_manager = DatabaseManager(**DB_CONFIG)
-
-        # Configuración de la ventana principal
-        self.title("Sistema de Nómina - R.H.G Inversiones, C.A.")
-        self.geometry("600x400")
-
-        # Crear barra de menú
-        self.create_menu()
-
-        # Aquí añades los widgets de la aplicación principal
-        self.label = tk.Label(self, text="Bienvenido al Sistema de Nómina de R.H.G Inversiones")
-        self.label.pack(pady=20, padx=20)
-
-    def create_menu(self):
-        menubar = tk.Menu(self)
-        self.config(menu=menubar)
         
-        # Menú Empleados
-        empleados_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Empleados", menu=empleados_menu)
-        empleados_menu.add_command(label="Gestionar Empleados", command=self.gestionar_empleados)
-        empleados_menu.add_command(label="Administrar NFC", command=self.administrar_nfc)
-        
-        # Menú Nómina
-        nomina_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Nómina", menu=nomina_menu)
-        nomina_menu.add_command(label="Generar Prenómina", command=self.ver_prenominas)
-        nomina_menu.add_command(label="Control de Asistencias", command=self.ver_asistencias)
-        # nomina_menu.add_command(label="Editar Prenómina", command=self.editar_prenomina)
-        # nomina_menu.add_command(label="Generar Nómina", command=self.generar_nomina)        
+        # Cargar información del usuario que inició sesión
+        self.username = username
+        self.user_data = self.cargar_datos_usuario()
 
-        #Menú periodos
-        periodos_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Periodos", menu=periodos_menu)
-        periodos_menu.add_command(label="Crear Periodo", command=self.crear_periodo)
-        periodos_menu.add_command(label="Cerrar Periodo", command=self.cerrar_periodo)
-        periodos_menu.add_command(label="Ver Periodos", command=self.ver_periodos)
+        # Configuración básica de la ventana principal
+        self.title("NomiInversiones - R.H.G Inversiones, C.A.")
+        self.geometry("1200x700")
 
-        # Menú Reportes
-        reportes_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Reportes", menu=reportes_menu)
-        reportes_menu.add_command(label="Ver Reporte de Nómina", command=self.ver_reportes_nomina)
-        reportes_menu.add_command(label="Ver Reporte de Asistencia", command=self.ver_reporte_asistencia)
+        # Crear el menú
+        self.crear_menu()
 
-        # Menú Prestamos
-        menubar.add_command(label="Prestamos", command=self.ver_prestamos)
-        
-        # Menú Salir
-        menubar.add_command(label="Salir", command=self.confirmar_salir)
+        # Crear el contenedor principal
+        self.main_container = ttk.Frame(self)
+        self.main_container.pack(fill=tk.BOTH, expand=True)
 
-    def gestionar_empleados(self):
-        """Mostrar ventana de empleados"""
+        # Frame para el header con logo, título e información de usuario
+        self.header_frame = ttk.Frame(self.main_container)
+        self.header_frame.pack(fill=tk.X)
+
+        # Frame izquierdo para logo y título
+        self.left_header = ttk.Frame(self.header_frame)
+        self.left_header.pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        # Cargar y mostrar el logo
         try:
-            from formularios.empleados_form import EmpleadosForm
-            EmpleadosForm(self, self.db_manager)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir el formulario de empleados: {str(e)}")
+            self.logo_image = Image.open("./imagenes/Logo RHG.jpg")
+            self.logo_image = self.logo_image.resize((60, 60), Image.Resampling.LANCZOS)
+            self.logo_photo = ImageTk.PhotoImage(self.logo_image)
+            self.logo_label = ttk.Label(self.left_header, image=self.logo_photo)
+            self.logo_label.pack(side=tk.LEFT, padx=10, pady=5)
+        except:
+            print("No se pudo cargar el logo")
 
-    def administrar_nfc(self):
-        """Mostrar ventana de administración de tarjetas NFC"""
-        try:
-            from formularios.nfc_form import NfcForm
-            NfcForm(self, self.db_manager)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir el formulario de tarjetas NFC: {str(e)}")
+        # Título de la aplicación
+        title_frame = ttk.Frame(self.left_header)
+        title_frame.pack(side=tk.LEFT, padx=10)
+        ttk.Label(title_frame, text="NomiInversiones", 
+                 font=('Helvetica', 20, 'bold')).pack()
+        ttk.Label(title_frame, text="R.H.G Inversiones, C.A.", 
+                 font=('Helvetica', 12)).pack()
 
-    def ver_asistencias(self):
-        """Ver el formulario de control de asistencias"""
-        try:
-            from formularios.asistencias_form import AsistenciasForm
-            AsistenciasForm(self, self.db_manager)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir el formulario de asistencias: {str(e)}")
-    
-    def ver_prenominas(self):
-        """Mostrar el formulario de prenóminas"""
-        try:
-            from formularios.prenomina_form import PrenominaForm
-            PrenominaForm(self, self.db_manager)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir el formulario de prenóminas: {str(e)}")
-    
-    def ver_reportes_nomina(self):
-        try:
-            from formularios.reportes_form import ReportesForm
-            ReportesForm(self, self.db_manager)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir el formulario de reportes: {str(e)}")
+        # Frame derecho para información del usuario
+        self.right_header = ttk.Frame(self.header_frame)
+        self.right_header.pack(side=tk.RIGHT, padx=20)
 
-    def ver_reporte_asistencia(self):
-        # Aquí irá la lógica para mostrar los reportes de asistencia
-        messagebox.showinfo("Reporte de Asistencia", "Reporte de asistencia generado")
+        # Estilo para la información del usuario
+        style = ttk.Style()
+        style.configure('User .TLabel', font=('Helvetica', 10))
+        style.configure('User Bold.TLabel', font=('Helvetica', 10, 'bold'))
+        style.configure('Time.TLabel', font=('Helvetica', 9))
 
-    def confirmar_salir(self):
-        if messagebox.askokcancel("Salir", "¿Estás seguro que deseas salir?"):
-            self.destroy()
-    
-    def crear_periodo(self):
-        """Abrir el formulario de creación de períodos"""
-        try:
-            # Importamos aquí para evitar problemas de importación circular
-            from formularios.periodo_nomina_form import PeriodoNominaForm
-            PeriodoNominaForm(self, self.db_manager)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir el formulario de períodos: {str(e)}")
+        # Frame para la información del usuario
+        self.user_info_frame = ttk.Frame(self.right_header)
+        self.user_info_frame.pack(pady=5)
 
-    def cerrar_periodo(self):
-        """Abrir ventana para cerrar un período existente"""
-        form = tk.Toplevel(self)
-        form.title("Cerrar Período de Nómina")
-        form.geometry("500x300")
-        
-        # Frame principal
-        main_frame = ttk.Frame(form, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Obtener períodos abiertos
-        periodos = self.db_manager.obtener_periodos()
-        periodos_abiertos = [p for p in periodos if p[4] == 'abierto']  # p[4] es el estado
-        
-        if not periodos_abiertos:
-            messagebox.showinfo("Información", "No hay períodos abiertos para cerrar")
-            form.destroy()
-            return
-        
-        # Combobox para seleccionar período
-        ttk.Label(main_frame, text="Seleccione el período a cerrar:").pack(pady=5)
-        periodo_var = tk.StringVar()
-        combo_periodos = ttk.Combobox(main_frame, 
-                                    textvariable=periodo_var,
-                                    state="readonly")
-        combo_periodos['values'] = [f"ID: {p[0]} - {p[1]} ({p[2]} - {p[3]})" 
-                                for p in periodos_abiertos]
-        combo_periodos.pack(pady=5)
-        
-        # Campo para motivo
-        ttk.Label(main_frame, text="Motivo del cierre:").pack(pady=5)
-        motivo_text = tk.Text(main_frame, height=4)
-        motivo_text.pack(pady=5)
-        
-        def confirmar_cierre():
-            if not periodo_var.get():
-                messagebox.showwarning("Advertencia", "Por favor seleccione un período")
-                return
-                
-            if not motivo_text.get("1.0", tk.END).strip():
-                messagebox.showwarning("Advertencia", "Por favor ingrese el motivo del cierre")
-                return
-                
-            if messagebox.askyesno("Confirmar", "¿Está seguro de cerrar este período?"):
-                try:
-                    # Obtener ID del período seleccionado
-                    id_periodo = int(periodo_var.get().split('-')[0].replace("ID:", "").strip())
-                    
-                    self.db_manager.cerrar_periodo(
-                        id_periodo,
-                        "admin",  # Debería ser el usuario actual
-                        motivo_text.get("1.0", tk.END).strip()
-                    )
-                    
-                    messagebox.showinfo("Éxito", "Período cerrado correctamente")
-                    form.destroy()
-                except Exception as e:
-                    messagebox.showerror("Error", f"Error al cerrar el período: {str(e)}")
-        
-        # Botones
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=10)
-        
-        ttk.Button(button_frame, text="Cerrar Período",
-                command=confirmar_cierre).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cancelar",
-                command=form.destroy).pack(side=tk.LEFT, padx=5)
+        # Mostrar información del usuario
+        user_name = f"{self.user_data['nombre']} {self.user_data['apellido']}"
+        ttk.Label(self.user_info_frame, text=user_name, 
+                 style='User Bold.TLabel').pack(anchor='e')
+        ttk.Label(self.user_info_frame, text=self.user_data['rol'], 
+                 style='User .TLabel').pack(anchor='e')
 
-    def ver_periodos(self):
-        """Mostrar lista de todos los períodos"""
-        # Crear ventana
-        periodos_window = tk.Toplevel(self)
-        periodos_window.title("Períodos de Nómina")
-        periodos_window.geometry("800x600")
+        # Labels para fecha y hora
+        self.date_label = ttk.Label(self.user_info_frame, style='Time.TLabel')
+        self.date_label.pack(anchor='e')
+        self.time_label = ttk.Label(self.user_info_frame, style='Time.TLabel')
+        self.time_label.pack(anchor='e')
+
+        # Actualizar fecha y hora
+        self.actualizar_fecha()
+
+        # Separador después del header
+        ttk.Separator(self.main_container, orient='horizontal').pack(fill=tk.X, pady=5)
+
+        # Frame principal para el contenido
+        self.main_frame = ttk.Frame(self.main_container)
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # Frame de bienvenida inicial
+        self.mensaje()
+
+        self.center_window()
+
+    def crear_menu(self):
+        """Crea el menú principal de la aplicación."""
+        menubar = Menu(self)
         
-        # Frame principal
-        main_frame = ttk.Frame(periodos_window, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Crear Treeview
-        tree = ttk.Treeview(main_frame, columns=(
-            "id", "tipo", "fecha_inicio", "fecha_fin", "estado", 
-            "creado_por", "fecha_creacion", "cerrado_por", "fecha_cierre"
-        ), show='headings')
-        
-        # Configurar columnas
-        columns_config = {
-            "id": ("ID", 50),
-            "tipo": ("Tipo", 100),
-            "fecha_inicio": ("Fecha Inicio", 100),
-            "fecha_fin": ("Fecha Fin", 100),
-            "estado": ("Estado", 80),
-            "creado_por": ("Creado Por", 100),
-            "fecha_creacion": ("Fecha Creación", 120),
-            "cerrado_por": ("Cerrado Por", 100),
-            "fecha_cierre": ("Fecha Cierre", 120)
+        # Definir la estructura del menú
+        self.menu_structure = {
+            "Empleados": [
+                ("Gestionar Empleados", self.empleados),
+                ("Administrar NFC", self.nfc),
+                ("Gestionar usuarios", self.gestionar_usuarios)
+            ],
+            "Nómina": [
+                ("Generar Prenómina", self.mostrar_prenomina),
+                ("Control de Asistencias", self.gestion_asistencia)
+            ],
+            "Periodos": [
+                ("Gestionar Periodos", self.gestion_periodos)
+            ],
+            "Prestamos": [
+                ("Gestionar Prestamo", self.gestionar_prestamo),
+            ],
+            "Reportes": [
+                ("Ver Reportes", self.reportes)
+            ],
+            "Mantenimiento": [
+                ("Mantenimiento del Sistema", self.mantenimiento)
+            ]
         }
-        
-        for col, (heading, width) in columns_config.items():
-            tree.heading(col, text=heading)
-            tree.column(col, width=width)
-        
-        # Scrollbars
-        vsb = ttk.Scrollbar(main_frame, orient="vertical", command=tree.yview)
-        hsb = ttk.Scrollbar(main_frame, orient="horizontal", command=tree.xview)
-        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        
-        # Grid layout
-        tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        hsb.grid(row=1, column=0, sticky="ew")
-        
-        main_frame.grid_rowconfigure(0, weight=1)
-        main_frame.grid_columnconfigure(0, weight=1)
-        
-        # Cargar datos
-        periodos = self.db_manager.obtener_periodos()
-        for periodo in periodos:
-            tree.insert('', 'end', values=periodo)
-        
-        # Frame para botones
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
-        
-        # Botones
-        ttk.Button(button_frame, text="Ver Historial",
-                command=lambda: self.ver_historial_periodo(tree)).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Actualizar",
-                command=lambda: self.actualizar_lista_periodos(tree)).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cerrar",
-                command=periodos_window.destroy).pack(side=tk.LEFT, padx=5)
 
-    def ver_historial_periodo(self, tree):
-        """Ver historial de un período seleccionado"""
-        selected = tree.selection()
-        if not selected:
-            messagebox.showwarning("Advertencia", "Por favor seleccione un período")
-            return
+        # Crear el menú principal
+        menu_bar = Menu(self)
+        self.config(menu=menu_bar)
+
+        # Agregar submenús al menú principal
+        for menu_name, options in self.menu_structure.items():
+            menu = Menu(menu_bar, tearoff=0)
+            menu_bar.add_cascade(label=menu_name, menu=menu)
             
-        periodo_id = tree.item(selected[0])['values'][0]
-        historial = self.db_manager.obtener_historial_periodo(periodo_id)
+            # Agregar opciones a los submenús
+            for option_text, command in options:
+                menu.add_command(label=option_text, command=command)
         
-        if not historial:
-            messagebox.showinfo("Información", "No hay historial para este período")
-            return
-        
-        # Crear ventana para el historial
-        historial_window = tk.Toplevel(self)
-        historial_window.title(f"Historial del Período {periodo_id}")
-        historial_window.geometry("600x400")
-        
-        # Crear Treeview para el historial
-        tree_hist = ttk.Treeview(historial_window, columns=(
-            "fecha", "estado_anterior", "estado_nuevo", "usuario", "motivo"
-        ), show='headings')
-        
-        # Configurar columnas
-        for col in ["fecha", "estado_anterior", "estado_nuevo", "usuario", "motivo"]:
-            tree_hist.heading(col, text=col.replace("_", " ").title())
-        
-        # Insertar datos
-        for registro in historial:
-            tree_hist.insert('', 'end', values=registro)
-        
-        tree_hist.pack(fill=tk.BOTH, expand=True)
+        menu_bar.add_command(label="Cerrar Sesión", command=self.cerrar_sesion)
 
-    def actualizar_lista_periodos(self, tree):
-        """Actualizar la lista de períodos en el Treeview"""
-        # Limpiar árbol
-        for item in tree.get_children():
-            tree.delete(item)
-        
-        # Recargar datos
-        periodos = self.db_manager.obtener_periodos()
-        for periodo in periodos:
-            tree.insert('', 'end', values=periodo)
+    def clear_main_frame(self):
+        """Limpia el contenido del frame principal"""
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
 
-    def ver_prestamos(self):
-        """Abrir ventana para ver los préstamos"""
+    def mensaje(self):
+        """Muestra la pantalla de bienvenida"""
+        self.clear_main_frame()
+        welcome_frame = ttk.Frame(self.main_frame)
+        welcome_frame.pack(expand=True)
+        
+        ttk.Label(welcome_frame, text="Bienvenido al Sistema de Nómina", 
+                 font=('Helvetica', 24)).pack(pady=20)
+        ttk.Label(welcome_frame, text="Seleccione una opción del menú para comenzar", 
+                 font=('Helvetica', 12)).pack()
+
+    def empleados(self):
+        """Muestra el módulo de gestión de empleados"""
+        self.clear_main_frame()
+        from formularios.empleados_form import EmpleadosForm
+        EmpleadosForm(self.main_frame, self.db_manager)
+
+    def gestionar_usuarios(self):
+        """Muestra el módulo de gestión de usuarios"""
+        self.clear_main_frame()
+        from formularios.usuarios_form import GestionUsuariosForm
+        GestionUsuariosForm(self.main_frame, self.db_manager)
+
+    def nfc(self):
+        """Muestra el módulo de administración NFC"""
+        self.clear_main_frame()
+        from formularios.nfc_form import NfcForm
+        NfcForm(self.main_frame, self.db_manager)
+
+    def mostrar_prenomina(self):
+        """Muestra el módulo de prenómina"""
+        self.clear_main_frame()
+        from formularios.prenomina_form import PrenominaForm
+        PrenominaForm(self.main_frame, self.db_manager)
+
+    def gestion_asistencia(self):
+        """Muestra el módulo de asistencias"""
+        self.clear_main_frame()
+        from formularios.asistencias_form import AsistenciasForm
+        AsistenciasForm(self.main_frame, self.db_manager)
+
+    def gestion_periodos(self):
+        """Muestra el módulo de periodos"""
+        self.clear_main_frame()
+        from formularios.periodo_nomina_form import PeriodoNominaForm
+        PeriodoNominaForm(self.main_frame, self.db_manager)
+
+    def gestionar_prestamo(self):
+        """Muestra el formulario para préstamo"""
+        self.clear_main_frame()
+        from formularios.prestamos_form import PrestamosForm
+        PrestamosForm(self.main_frame, self.db_manager, self.user_data)
+
+    def reportes(self):
+        """Muestra el módulo de reportes"""
+        self.clear_main_frame()
+        from formularios.reportes_form import ReportesForm
+        ReportesForm(self.main_frame, self.db_manager)
+
+    def mantenimiento(self):
+        """Muestra el módulo de mantenimiento"""
+        self.clear_main_frame()
+        from formularios.mantenimiento_form import MantenimientoForm
+        MantenimientoForm(self.main_frame, self.db_manager)
+
+    def actualizar_fecha(self):
+        """Actualiza la fecha y hora en tiempo real"""
+        now = datetime.now()
+        date_str = now.strftime("%d/%m/%Y")
+        time_str = now.strftime("%H:%M:%S")
+        
+        self.date_label.config(text=date_str)
+        self.time_label.config(text=time_str)
+        
+        # Store after id for cleanup
+        if not hasattr(self, 'after_ids'):
+            self.after_ids = []
+        after_id = self.after(1000, self.actualizar_fecha)
+        self.after_ids.append(after_id)
+
+    # Método para actualizar la información del usuario
+
+    def cargar_datos_usuario(self):
+        """Carga los datos del usuario desde la base de datos"""
+        if not self.username:
+            return {
+                'nombre': 'Usuario',
+                'apellido': 'Desconocido',
+                'rol': 'Sin Rol'
+            }
+
+        query = """
+        SELECT 
+            e.nombre,
+            e.apellido,
+            u.rol,
+            u.id_usuario,
+            e.id_empleado
+        FROM usuarios u
+        JOIN empleados e ON u.id_empleado = e.id_empleado
+        WHERE u.usuario = %s
+        """
+        
         try:
-            # Obtener información del usuario actual (asumimos que es 'admin' por ahora)
-            connection = self.db_manager.connect()
-            cursor = connection.cursor(dictionary=True)
-            
-            # Consultar información del usuario
-            query = """
-            SELECT id_usuario, usuario, rol
-            FROM usuarios 
-            WHERE usuario = 'admin'
-            """
-            cursor.execute(query)
-            usuario_actual = cursor.fetchone()
-            
-            # Si el usuario es un empleado regular, obtener su id_empleado
-            if usuario_actual['rol'] == 'empleado':
-                query_empleado = """
-                SELECT id_empleado 
-                FROM empleados 
-                WHERE cedula_identidad = %s
-                """
-                cursor.execute(query_empleado, (usuario_actual['usuario'],))
-                empleado = cursor.fetchone()
-                if empleado:
-                    usuario_actual['id_empleado'] = empleado['id_empleado']
-            
-            from formularios.prestamos_form import PrestamosForm
-            PrestamosForm(self, self.db_manager, usuario_actual)
-            
+            result = self.db_manager.ejecutar_query(query, (self.username,), fetchone=True)
+            if result:
+                return {
+                    'nombre': result[0],
+                    'apellido': result[1],
+                    'rol': result[2],
+                    'id_usuario': result[3],
+                    'id_empleado': result[4]
+                }
+            return {
+                'nombre': 'Usuario',
+                'apellido': 'Desconocido',
+                'rol': 'Sin Rol'
+            }
         except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir el formulario de préstamos: {str(e)}")
-        finally:
-            if 'connection' in locals() and connection.is_connected():
-                cursor.close()
-                connection.close()
+            print(f"Error al cargar datos del usuario: {e}")
+            return {
+                'nombre': 'Error',
+                'apellido': 'de Carga',
+                'rol': 'Error'
+            }
+
+    def update_user_info(self):
+        """Actualiza la información mostrada del usuario"""
+        user_name = f"{self.user_data['nombre']} {self.user_data['apellido']}"
+        
+        # Actualizar las etiquetas
+        self.user_info_frame.winfo_children()[0].config(text=user_name)
+        self.user_info_frame.winfo_children()[1].config(text=self.user_data['rol'])
+
+    def center_window(self):
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry(f'{width}x{height}+{x}+{y}')
+
+    def destroy(self):
+        for after_id in self.after_ids:
+            self.after_cancel(after_id)
+        super().destroy()
+
+    def cerrar_sesion(self):
+        if messagebox.askyesno("Confirmar", "¿Está seguro que desea cerrar sesión?"):
+            self.destroy()
+            from formularios.form_login import LoginForm
+            login = LoginForm()
+            login.mainloop
 
 if __name__ == "__main__":
-    app = MainApp()
+    app = MainWindow()
     app.mainloop()

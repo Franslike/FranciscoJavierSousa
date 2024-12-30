@@ -9,14 +9,12 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 
-class PrenominaForm(tk.Toplevel):
+class PrenominaForm(ttk.Frame):
     def __init__(self, parent, db_manager):
         super().__init__(parent)
         self.db_manager = db_manager
         
-        # Configuración básica de la ventana
-        self.title("Prenóminas de Empleados")
-        self.geometry("1200x700")
+        self.pack(fill=tk.BOTH, expand=True)
         
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
@@ -152,18 +150,17 @@ class PrenominaForm(tk.Toplevel):
             factor_lph = Decimal('4')     # Ajuste para un mes
         
         for deduccion in deducciones:
-            nombre, porcentaje, tipo, _ = deduccion
-            porcentaje = Decimal(str(porcentaje))
+            nombre = deduccion[0]
+            porcentaje = Decimal(str(deduccion[1]))
             
-            if nombre == "Seguro Social" or nombre == "RPE":
-                # Base semanal para SS y RPE
+            if nombre == "Seguro Social":
+                # Base semanal para SS
                 base_semanal = (salario_mensual * Decimal('12') / Decimal('52'))
-                monto_deduccion = base_semanal * porcentaje * factor_ss_rpe
-                
-                if nombre == "Seguro Social":
-                    seguro_social = monto_deduccion
-                else:
-                    rpe = monto_deduccion
+                seguro_social = base_semanal * porcentaje * factor_ss_rpe
+            elif nombre == "RPE":
+                # Base semanal para RPE
+                base_semanal = (salario_mensual * Decimal('12') / Decimal('52'))
+                rpe = base_semanal * porcentaje * factor_ss_rpe
             elif nombre == "Ley de Política Habitacional":
                 # Base mensual para LPH
                 base_mensual = salario_mensual
@@ -257,11 +254,11 @@ class PrenominaForm(tk.Toplevel):
                     salario_mensual, tipo_periodo, deducciones)
                 
                 # Ajustar préstamos al período
-                prestamos = self.db_manager.obtener_prestamos_empleado(emp[0])
+                prestamos = self.db_manager.obtener_prestamos_monto_nomina(emp[0])
                 prestamos_valor = self.ajustar_prestamos_periodo(prestamos, tipo_periodo)
                 
                 # Calcular deducciones totales
-                total_deducciones = (seguro_social + rpe + ley_pol_hab + 
+                total_deducciones = (seguro_social + rpe + ley_pol_hab +
                                    inasistencias_valor + prestamos_valor)
                 
                 # Calcular total a pagar
@@ -301,15 +298,15 @@ class PrenominaForm(tk.Toplevel):
                 ])
 
     def procesar_nomina(self):
-        """Generar PDFs de las nóminas y la planilla de pago"""
+        """Generar PDFs de las nóminas, cerrar período y procesar préstamos"""
         if not self.periodo_var.get():
             messagebox.showwarning("Advertencia", "Por favor seleccione un período")
             return
-            
+                
         if not self.prenominas_tree.get_children():
             messagebox.showwarning("Advertencia", "No hay prenóminas para generar PDFs")
             return
-            
+                
         # Obtener información del período
         periodo_id = int(self.periodo_var.get().split('-')[0].replace("ID:", "").strip())
         periodo_info = next((p for p in self.db_manager.obtener_periodos() 
@@ -319,109 +316,187 @@ class PrenominaForm(tk.Toplevel):
             messagebox.showerror("Error", "No se pudo obtener la información del período")
             return
 
-        # Crear carpeta para los PDFs
-        fecha_inicio = periodo_info[2].strftime("%Y-%m-%d") if isinstance(periodo_info[2], datetime) else periodo_info[2]
-        fecha_fin = periodo_info[3].strftime("%Y-%m-%d") if isinstance(periodo_info[3], datetime) else periodo_info[3]
-        output_folder = f"nominas_pdf/periodo_{fecha_inicio}-{fecha_fin}"
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
-
-        # Obtener items del Treeview
-        all_items = self.prenominas_tree.get_children()
-        total_empleados = len(all_items)
-        empleados_procesados = 0
-
-        for item in all_items:
-            empleado_data = self.prenominas_tree.item(item)['values']
-            
+        if messagebox.askyesno("Confirmar", 
+                            "¿Está seguro de procesar la nómina? Esto cerrará el período actual."):
             try:
-                nombre = str(empleado_data[0])
-                apellido = str(empleado_data[1])
-                cedula = str(empleado_data[2])
-                cargo = str(empleado_data[3])
-                sueldo = float(empleado_data[4].replace(',', '')) if isinstance(empleado_data[4], str) else float(empleado_data[4])
-                seguro_social = float(empleado_data[5].replace(',', '')) if isinstance(empleado_data[5], str) else float(empleado_data[5])
-                rpe = float(empleado_data[6].replace(',', '')) if isinstance(empleado_data[6], str) else float(empleado_data[6])
-                ley_pol_hab = float(empleado_data[7].replace(',', '')) if isinstance(empleado_data[7], str) else float(empleado_data[7])
-                inasistencias = float(empleado_data[8].replace(',', '')) if isinstance(empleado_data[8], str) else float(empleado_data[8])
-                prestamos = float(empleado_data[9].replace(',', '')) if isinstance(empleado_data[9], str) else float(empleado_data[9])
-            except (IndexError, ValueError) as e:
-                print(f"Error procesando datos del empleado: {e}")
-                continue
+                # Crear carpeta para los PDFs
+                fecha_inicio = periodo_info[2].strftime("%Y-%m-%d") if isinstance(periodo_info[2], datetime) else periodo_info[2]
+                fecha_fin = periodo_info[3].strftime("%Y-%m-%d") if isinstance(periodo_info[3], datetime) else periodo_info[3]
+                output_folder = f"nominas_pdf/periodo_{fecha_inicio}-{fecha_fin}"
+                if not os.path.exists(output_folder):
+                    os.makedirs(output_folder)
 
-            pdf_filename = os.path.join(output_folder, f"nomina_{cedula}.pdf")
-            doc = SimpleDocTemplate(pdf_filename, pagesize=letter, 
-                                topMargin=0.5*inch, bottomMargin=0.5*inch)
-            elements = []
+                # Obtener items del Treeview
+                all_items = self.prenominas_tree.get_children()
+                total_empleados = len(all_items)
+                empleados_procesados = 0
 
-            styles = getSampleStyleSheet()
-            title_style = styles['Title']
-            title_style.alignment = 1  # Centrado
+                # Procesar cada empleado
+                for item in all_items:
+                    empleado_data = self.prenominas_tree.item(item)['values']
+                    
+                    try:
+                        nombre = str(empleado_data[0])
+                        apellido = str(empleado_data[1])
+                        cedula = str(empleado_data[2])
+                        cargo = str(empleado_data[3])
+                        sueldo = float(empleado_data[4].replace(',', '')) if isinstance(empleado_data[4], str) else float(empleado_data[4])
+                        seguro_social = float(empleado_data[5].replace(',', '')) if isinstance(empleado_data[5], str) else float(empleado_data[5])
+                        rpe = float(empleado_data[6].replace(',', '')) if isinstance(empleado_data[6], str) else float(empleado_data[6])
+                        ley_pol_hab = float(empleado_data[7].replace(',', '')) if isinstance(empleado_data[7], str) else float(empleado_data[7])
+                        inasistencias = float(empleado_data[8].replace(',', '')) if isinstance(empleado_data[8], str) else float(empleado_data[8])
+                        prestamos = float(empleado_data[9].replace(',', '')) if isinstance(empleado_data[9], str) else float(empleado_data[9])
+                        
+                        # Procesar préstamos del empleado
+                        if prestamos > 0:
+                            # Obtener el empleado por cédula
+                            empleado = self.db_manager.obtener_empleado_por_cedula(cedula)
+                            if empleado:
+                                # Registrar pago de préstamo
+                                self.db_manager.registrar_pago_prestamo({
+                                    'id_empleado': empleado[0],
+                                    'monto': prestamos,
+                                    'fecha': fecha_fin,
+                                    'periodo': f"{fecha_inicio} - {fecha_fin}"
+                                })
 
-            # Encabezado con información del período
-            elements.append(Paragraph("R.H.G. INVERSIONES, C.A.", title_style))
-            elements.append(Paragraph("COMPROBANTE DE PAGO", title_style))
-            elements.append(Paragraph(f"PERÍODO: {periodo_info[1].upper()}", title_style))
-            elements.append(Paragraph(f"DEL {periodo_info[2]} AL {periodo_info[3]}", title_style))
-            elements.append(Paragraph("DATOS DEL TRABAJADOR", title_style))
-            elements.append(Spacer(1, 0.25*inch))
+                        # Generar PDF
+                        pdf_filename = os.path.join(output_folder, f"nomina_{cedula}.pdf")
+                        self.generar_pdf_nomina(
+                            pdf_filename,
+                            {
+                                'nombre': nombre,
+                                'apellido': apellido,
+                                'cedula': cedula,
+                                'cargo': cargo,
+                                'sueldo': sueldo,
+                                'seguro_social': seguro_social,
+                                'rpe': rpe,
+                                'ley_pol_hab': ley_pol_hab,
+                                'inasistencias': inasistencias,
+                                'prestamos': prestamos,
+                                'periodo_info': periodo_info
+                            })
+                        
+                        empleados_procesados += 1
+                        
+                    except (IndexError, ValueError) as e:
+                        print(f"Error procesando empleado: {e}")
+                        continue
 
-            data = [
-                ["Sueldo", "Apellidos y Nombres", "Cédula"],
-                [f"{sueldo:,.2f}", f"{nombre} {apellido}", cedula],
-                ["Cargo", "Unidad de Adscripción", ""],
-                [cargo, "Administración", ""]
-            ]
+                # Cerrar el período
+                self.db_manager.cerrar_periodo(
+                    periodo_id,
+                    "admin",  # Aquí deberías usar el usuario actual
+                    "Cierre regular de período")
 
-            data.extend([
-                ["Concepto", "Referencia", "Asignación", "Deducción"],
-                ["DIAS TRABAJADOS", "15", f"{sueldo:,.2f}", ""],
-                ["SEGURO SOCIAL OBLIGATORIO", "2", "", f"{seguro_social:,.2f}"],
-                ["REGIMEN PRESTACIONAL DE EMPLEO", "2", "", f"{rpe:,.2f}"],
-                ["FONDO DE AHORRO OBLIGATORIO P/VIVIENDA", "0.01", "", f"{ley_pol_hab:,.2f}"],
-                ["INASISTENCIAS", "", "", f"{inasistencias:,.2f}"],
-                ["PRÉSTAMOS", "", "", f"{prestamos:,.2f}"]
-            ])
+                messagebox.showinfo(
+                    "Proceso Completado",
+                    f"Se han generado {empleados_procesados} archivos PDF de nómina\n"
+                    f"El período ha sido cerrado exitosamente\n"
+                    f"Los archivos se encuentran en: {output_folder}")
+                
+                # Actualizar la interfaz
+                self.periodo_var.set('')
+                self.cargar_prenominas()
+                
+            except Exception as e:
+                messagebox.showerror(
+                    "Error",
+                    f"Ocurrió un error durante el proceso: {str(e)}\n"
+                    "Por favor contacte al administrador del sistema.")
 
-            total_asignaciones = sueldo
-            total_deducciones = seguro_social + rpe + ley_pol_hab + inasistencias + prestamos
-            neto_a_cobrar = total_asignaciones - total_deducciones
+    def clear_main_frame(self):
+        """Limpia el contenido del frame principal"""
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
 
-            data.extend([
-                ["Total Asignaciones y Deducciones", "", f"{total_asignaciones:,.2f}", f"{total_deducciones:,.2f}"],
-                ["", "Neto a Cobrar", f"{neto_a_cobrar:,.2f}", ""]
-            ])
+    def generar_pdf_nomina(self, filename, data):
+        """Genera el PDF de nómina individual"""
+        doc = SimpleDocTemplate(filename, pagesize=letter, 
+                            topMargin=0.5*inch, bottomMargin=0.5*inch)
+        elements = []
 
-            t = Table(data, colWidths=[2.5*inch, 2*inch, 1.5*inch, 1.5*inch])
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 10),
-                ('TOPPADDING', (0, 1), (-1, -1), 6),
-                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
+        styles = getSampleStyleSheet()
+        title_style = styles['Title']
+        title_style.alignment = 1  # Centrado
 
-            elements.append(t)
-            elements.append(Spacer(1, 0.5*inch))
-            elements.append(Paragraph("Declaro haber recibido conforme el monto que me corresponde para el período según los indicado por los conceptos especificados en este recibo de pago.", 
-                                    styles['Normal']))
-            elements.append(Spacer(1, 0.25*inch))
-            elements.append(Paragraph("Firma: _______________________", styles['Normal']))
-            elements.append(Paragraph("Cédula: ______________________", styles['Normal']))
+        # Encabezado
+        elements.append(Paragraph("R.H.G. INVERSIONES, C.A.", title_style))
+        elements.append(Paragraph("COMPROBANTE DE PAGO", title_style))
+        elements.append(Paragraph(f"PERÍODO: {data['periodo_info'][1].upper()}", title_style))
+        elements.append(Paragraph(
+            f"DEL {data['periodo_info'][2]} AL {data['periodo_info'][3]}", 
+            title_style
+        ))
+        elements.append(Paragraph("DATOS DEL TRABAJADOR", title_style))
+        elements.append(Spacer(1, 0.25*inch))
 
-            doc.build(elements)
-            
-            empleados_procesados += 1
-            print(f"Procesado {empleados_procesados} de {total_empleados}")
+        # Datos del empleado
+        employee_data = [
+            ["Sueldo", "Apellidos y Nombres", "Cédula"],
+            [f"{data['sueldo']:,.2f}", f"{data['nombre']} {data['apellido']}", data['cedula']],
+            ["Cargo", "Unidad de Adscripción", ""],
+            [data['cargo'], "Administración", ""]
+        ]
 
-        messagebox.showinfo("PDFs Generados", 
-                        f"Se han generado {total_empleados} archivos PDF de nómina en la carpeta '{output_folder}'")
+        # Conceptos
+        concepts_data = [
+            ["Concepto", "Referencia", "Asignación", "Deducción"],
+            ["DIAS TRABAJADOS", "15", f"{data['sueldo']:,.2f}", ""],
+            ["SEGURO SOCIAL OBLIGATORIO", "2", "", f"{data['seguro_social']:,.2f}"],
+            ["REGIMEN PRESTACIONAL DE EMPLEO", "2", "", f"{data['rpe']:,.2f}"],
+            ["FONDO DE AHORRO OBLIGATORIO P/VIVIENDA", "0.01", "", f"{data['ley_pol_hab']:,.2f}"],
+            ["INASISTENCIAS", "", "", f"{data['inasistencias']:,.2f}"],
+            ["PRÉSTAMOS", "", "", f"{data['prestamos']:,.2f}"]
+        ]
+
+        # Totales
+        total_asignaciones = data['sueldo']
+        total_deducciones = (data['seguro_social'] + data['rpe'] + 
+                            data['ley_pol_hab'] + data['inasistencias'] + 
+                            data['prestamos'])
+        neto_a_cobrar = total_asignaciones - total_deducciones
+
+        concepts_data.extend([
+            ["Total Asignaciones y Deducciones", "", 
+            f"{total_asignaciones:,.2f}", f"{total_deducciones:,.2f}"],
+            ["", "Neto a Cobrar", f"{neto_a_cobrar:,.2f}", ""]
+        ])
+
+        # Combinar datos
+        table_data = employee_data + concepts_data
+
+        # Crear tabla
+        t = Table(table_data, colWidths=[2.5*inch, 2*inch, 1.5*inch, 1.5*inch])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('TOPPADDING', (0, 1), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+
+        elements.append(t)
+        elements.append(Spacer(1, 0.5*inch))
+        
+        # Pie de página
+        elements.append(Paragraph(
+            "Declaro haber recibido conforme el monto que me corresponde para el "
+            "período según los indicado por los conceptos especificados en este "
+            "recibo de pago.",
+            styles['Normal']
+        ))
+        elements.append(Spacer(1, 0.25*inch))
+        elements.append(Paragraph("Firma: _______________________", styles['Normal']))
+        elements.append(Paragraph("Cédula: ______________________", styles['Normal']))
+
+        doc.build(elements)

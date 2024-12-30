@@ -3,14 +3,12 @@ from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
 from datetime import datetime, timedelta
 
-class PeriodoNominaForm(tk.Toplevel):
+class PeriodoNominaForm(ttk.Frame):
     def __init__(self, parent, db_manager):
         super().__init__(parent)
         self.db_manager = db_manager
         
-        # Configuración básica de la ventana
-        self.title("Gestión de Períodos de Nómina")
-        self.geometry("800x600")
+        self.pack(fill=tk.BOTH, expand=True)
         
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
@@ -53,25 +51,25 @@ class PeriodoNominaForm(tk.Toplevel):
         
         # Crear Treeview para mostrar períodos
         self.tree = ttk.Treeview(self.lista_periodos_frame, columns=(
-            "id", "tipo", "fecha_inicio", "fecha_fin", "estado", "creado_por"
-        ), show='headings')
+            "id", "tipo", "fecha_inicio", "fecha_fin", "estado", "creado_por"), 
+            show='headings', displaycolumns=("tipo", "fecha_inicio", "fecha_fin", "estado", "creado_por"))
         
         # Configurar columnas
+        self.tree.column("id", width=0, stretch=False)
+        self.tree.column("tipo", width=100)
+        self.tree.column("fecha_inicio", width=100)
+        self.tree.column("fecha_fin", width=100)
+        self.tree.column("estado", width=100)
+        self.tree.column("creado_por", width=100)
+
+        # Configurar encabezados
         self.tree.heading("id", text="ID")
         self.tree.heading("tipo", text="Tipo")
         self.tree.heading("fecha_inicio", text="Fecha Inicio")
         self.tree.heading("fecha_fin", text="Fecha Fin")
         self.tree.heading("estado", text="Estado")
         self.tree.heading("creado_por", text="Creado Por")
-        
-        # Configurar anchos de columna
-        self.tree.column("id", width=50)
-        self.tree.column("tipo", width=100)
-        self.tree.column("fecha_inicio", width=100)
-        self.tree.column("fecha_fin", width=100)
-        self.tree.column("estado", width=100)
-        self.tree.column("creado_por", width=100)
-        
+
         # Agregar scrollbar
         scrollbar = ttk.Scrollbar(self.lista_periodos_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)

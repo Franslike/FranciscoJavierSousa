@@ -4,14 +4,12 @@ from tkcalendar import DateEntry
 from datetime import datetime, timedelta
 import calendar
 
-class AsistenciasForm(tk.Toplevel):
+class AsistenciasForm(ttk.Frame):
     def __init__(self, parent, db_manager):
         super().__init__(parent)
         self.db_manager = db_manager
         
-        # Configuración básica de la ventana
-        self.title("Control de Asistencias")
-        self.geometry("1200x700")
+        self.pack(fill=tk.BOTH, expand=True)
         
         # Constantes para la lógica de asistencias
         self.HORAS_LABORALES = 8

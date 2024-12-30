@@ -2,14 +2,12 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 
-class NfcForm(tk.Toplevel):
+class NfcForm(ttk.Frame):
     def __init__(self, parent, db_manager):
         super().__init__(parent)
         self.db_manager = db_manager
-        
-        # Configuración básica de la ventana
-        self.title("Administrador de Tarjetas NFC")
-        self.geometry("800x600")
+
+        self.pack(fill=tk.BOTH, expand=True)
         
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
@@ -39,24 +37,24 @@ class NfcForm(tk.Toplevel):
         
         # Crear Treeview
         self.tree = ttk.Treeview(list_frame, columns=(
-            "id", "uid", "tipo", "estado", "fecha_registro", "empleado"
-        ), show='headings')
+            "id", "uid", "tipo", "estado", "fecha_registro", "empleado"),
+            show='headings', displaycolumns=("uid", "tipo", "estado", "fecha_registro", "empleado"))
         
         # Configurar columnas
+        self.tree.column("id", width=0, stretch=False)  # Ocultar ID
+        self.tree.column("uid", width=150)
+        self.tree.column("tipo", width=100)
+        self.tree.column("estado", width=100)
+        self.tree.column("fecha_registro", width=150)
+        self.tree.column("empleado", width=200)
+
+        # Configurar encabezados
         self.tree.heading("id", text="ID")
         self.tree.heading("uid", text="UID")
         self.tree.heading("tipo", text="Tipo")
         self.tree.heading("estado", text="Estado")
         self.tree.heading("fecha_registro", text="Fecha Registro")
         self.tree.heading("empleado", text="Empleado Asignado")
-        
-        # Ajustar anchos de columna
-        self.tree.column("id", width=50)
-        self.tree.column("uid", width=150)
-        self.tree.column("tipo", width=100)
-        self.tree.column("estado", width=100)
-        self.tree.column("fecha_registro", width=150)
-        self.tree.column("empleado", width=200)
         
         # Configurar colores según estado
         self.tree.tag_configure('disponible', background='#d4edda')  # Verde claro

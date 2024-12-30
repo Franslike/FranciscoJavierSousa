@@ -102,15 +102,13 @@ class PrestamoNuevoForm(tk.Toplevel):
         except ValueError:
             messagebox.showerror("Error", "Por favor ingrese valores válidos")
 
-class PrestamosForm(tk.Toplevel):
+class PrestamosForm(ttk.Frame):
     def __init__(self, parent, db_manager, usuario_actual):
         super().__init__(parent)
         self.db_manager = db_manager
         self.usuario_actual = usuario_actual
         
-        # Configuración básica
-        self.title("Gestión de Préstamos")
-        self.geometry("1200x700")
+        self.pack(fill=tk.BOTH, expand=True)
         
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
@@ -120,15 +118,20 @@ class PrestamosForm(tk.Toplevel):
         self.top_frame = ttk.Frame(self.main_frame)
         self.top_frame.pack(fill=tk.X, pady=5)
         
-        # Si es empleado regular, solo mostrar botón de nueva solicitud
+        # Si es empleado regular, mostrar botón de nueva solicitud y título
         if self.usuario_actual['rol'] == 'empleado':
+            titulo = ttk.Label(self.top_frame, 
+                             text="Mis Préstamos",
+                             font=('Helvetica', 12, 'bold'))
+            titulo.pack(side=tk.LEFT, padx=5)
+            
             ttk.Button(self.top_frame, text="Nueva Solicitud",
-                      command=self.nueva_solicitud).pack(side=tk.LEFT, padx=5)
+                      command=self.nueva_solicitud).pack(side=tk.RIGHT, padx=5)
         else:
             # Filtros para administradores/gerentes
             ttk.Label(self.top_frame, text="Estado:").pack(side=tk.LEFT, padx=5)
             self.estado_var = tk.StringVar()
-            estados = ['Todos', 'Pendiente', 'Aprobado', 'Rechazado', 'En pago', 'Liquidado']
+            estados = ['Todos', 'Pendiente', 'Aprobado', 'Rechazado', 'Activo', 'Liquidado']
             self.estado_combo = ttk.Combobox(self.top_frame, 
                                            textvariable=self.estado_var,
                                            values=estados,
@@ -163,7 +166,7 @@ class PrestamosForm(tk.Toplevel):
         self.tree.heading("saldo", text="Saldo Pendiente")
         
         # Configurar anchos de columna
-        self.tree.column("id", width=50)
+        self.tree.column("id", width=0, stretch=False)
         self.tree.column("empleado", width=200)
         self.tree.column("monto", width=100)
         self.tree.column("cuotas", width=70)
@@ -173,14 +176,14 @@ class PrestamosForm(tk.Toplevel):
         self.tree.column("saldo", width=100)
         
         # Scrollbars
-        scrolly = ttk.Scrollbar(self.tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        scrollx = ttk.Scrollbar(self.tree_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
-        self.tree.configure(yscrollcommand=scrolly.set, xscrollcommand=scrollx.set)
+        # scrolly = ttk.Scrollbar(self.tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        # # scrollx = ttk.Scrollbar(self.tree_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
+        # self.tree.configure(yscrollcommand=scrolly.set, xscrollcommand=scrollx.set)
         
         # Pack Treeview y scrollbars
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrolly.pack(side=tk.RIGHT, fill=tk.Y)
-        scrollx.pack(side=tk.BOTTOM, fill=tk.X)
+        # scrolly.pack(side=tk.RIGHT, fill=tk.Y)
+        # scrollx.pack(side=tk.BOTTOM, fill=tk.X)
         
         # Frame para botones
         self.button_frame = ttk.Frame(self.main_frame)
@@ -192,9 +195,9 @@ class PrestamosForm(tk.Toplevel):
                       command=self.aprobar_prestamo).pack(side=tk.LEFT, padx=5)
             ttk.Button(self.button_frame, text="Rechazar",
                       command=self.rechazar_prestamo).pack(side=tk.LEFT, padx=5)
-            ttk.Button(self.button_frame, text="Ver Detalles",
-                      command=self.ver_detalles).pack(side=tk.LEFT, padx=5)
         
+        ttk.Button(self.button_frame, text="Ver Detalles",
+                  command=self.ver_detalles).pack(side=tk.LEFT, padx=5)
         ttk.Button(self.button_frame, text="Actualizar",
                   command=self.cargar_prestamos).pack(side=tk.LEFT, padx=5)
         
@@ -202,7 +205,7 @@ class PrestamosForm(tk.Toplevel):
         self.tree.tag_configure('pendiente', background='#fff3cd')
         self.tree.tag_configure('aprobado', background='#d1e7dd')
         self.tree.tag_configure('rechazado', background='#f8d7da')
-        self.tree.tag_configure('en_pago', background='#cfe2ff')
+        self.tree.tag_configure('activo', background='#cfe2ff')
         self.tree.tag_configure('liquidado', background='#e2e3e5')
         
         # Bindings
@@ -210,7 +213,7 @@ class PrestamosForm(tk.Toplevel):
             self.estado_combo.bind('<<ComboboxSelected>>', lambda e: self.cargar_prestamos())
         if hasattr(self, 'search_var'):
             self.search_var.trace('w', lambda *args: self.cargar_prestamos())
-        
+            
         # Cargar datos iniciales
         self.cargar_prestamos()
     
@@ -219,48 +222,49 @@ class PrestamosForm(tk.Toplevel):
         PrestamoNuevoForm(self, self.db_manager, self.usuario_actual['id_empleado'])
     
     def cargar_prestamos(self):
-        """Cargar lista de préstamos según filtros"""
+        """Cargar lista de préstamos según filtros y rol"""
         # Limpiar Treeview
         for item in self.tree.get_children():
             self.tree.delete(item)
         
-        # Obtener filtros
-        estado = getattr(self, 'estado_var', tk.StringVar()).get()
-        busqueda = getattr(self, 'search_var', tk.StringVar()).get().lower()
-        
-        # Obtener préstamos
-        if self.usuario_actual['rol'] == 'empleado':
-            prestamos = self.db_manager.obtener_prestamos_empleado(
-                self.usuario_actual['id_empleado'])
-        else:
-            prestamos = self.db_manager.obtener_todos_prestamos()
-        
-        # Aplicar filtros
-        for prestamo in prestamos:
-            # Aplicar filtro de estado
-            if estado != 'Todos' and prestamo['estado'].lower() != estado.lower():
-                continue
+        try:
+            if self.usuario_actual['rol'] == 'empleado':
+                # Para empleados, mostrar solo sus préstamos
+                prestamos = self.db_manager.obtener_prestamos_empleado(
+                    self.usuario_actual['id_empleado'])
+            else:
+                # Para administradores/gerentes, obtener estado y búsqueda
+                estado = getattr(self, 'estado_var', tk.StringVar()).get()
+                busqueda = getattr(self, 'search_var', tk.StringVar()).get().lower()
+                prestamos = self.db_manager.obtener_todos_prestamos()
+                
+                # Aplicar filtros para admin/gerentes
+                if estado != 'Todos':
+                    prestamos = [p for p in prestamos 
+                            if p['estado'].lower() == estado.lower()]
+                if busqueda:
+                    prestamos = [p for p in prestamos 
+                            if any(str(v).lower().find(busqueda) >= 0 
+                            for v in p.values())]
             
-            # Aplicar búsqueda
-            if busqueda and not any(
-                str(valor).lower().find(busqueda) >= 0 
-                for valor in prestamo.values()):
-                continue
-            
-            # Insertar en Treeview
-            valores = [
-                prestamo['id_prestamo'],
-                prestamo['empleado'],
-                f"{float(prestamo['monto_total']):,.2f}",
-                f"{prestamo['cuotas_pagadas']}/{prestamo['cuotas_totales']}",
-                f"{float(prestamo['monto_cuota']):,.2f}",
-                prestamo['fecha_solicitud'].strftime('%Y-%m-%d'),
-                prestamo['estado'],
-                f"{float(prestamo['saldo_restante']):,.2f}"
-            ]
-            
-            self.tree.insert('', 'end', values=valores,
-                           tags=(prestamo['estado'].lower(),))
+            # Insertar préstamos filtrados en el Treeview
+            for prestamo in prestamos:
+                valores = [
+                    prestamo['id_prestamo'],
+                    prestamo['empleado'],
+                    f"{float(prestamo['monto_total']):,.2f}",
+                    f"{prestamo['cuotas_pagadas']}/{prestamo['cuotas_totales']}",
+                    f"{float(prestamo['monto_cuota']):,.2f}",
+                    prestamo['fecha_solicitud'].strftime('%Y-%m-%d'),
+                    prestamo['estado'],
+                    f"{float(prestamo['saldo_restante']):,.2f}"
+                ]
+                
+                self.tree.insert('', 'end', values=valores,
+                            tags=(prestamo['estado'].lower(),))
+                            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al cargar préstamos: {str(e)}")
     
     def aprobar_prestamo(self):
         """Aprobar préstamo seleccionado"""
@@ -270,17 +274,17 @@ class PrestamosForm(tk.Toplevel):
             return
         
         prestamo = self.tree.item(selected[0])['values']
-        if prestamo[6] != 'Pendiente':
+        if prestamo[6].lower() != 'pendiente':  # Convertir a minúsculas para comparar
             messagebox.showwarning("Advertencia", 
-                                 "Solo se pueden aprobar préstamos pendientes")
+                                "Solo se pueden aprobar préstamos pendientes")
             return
         
-        if messagebox.askyesno("Confirmar", 
-                              "¿Está seguro de aprobar este préstamo?"):
+        if messagebox.askyesno("Confirmar", "¿Está seguro de aprobar este préstamo?"):
             try:
+                nombre_completo = f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}"
                 self.db_manager.aprobar_prestamo(
                     prestamo[0],  # id_prestamo
-                    self.usuario_actual['usuario']
+                    nombre_completo
                 )
                 messagebox.showinfo("Éxito", "Préstamo aprobado correctamente")
                 self.cargar_prestamos()
@@ -295,9 +299,9 @@ class PrestamosForm(tk.Toplevel):
             return
         
         prestamo = self.tree.item(selected[0])['values']
-        if prestamo[6] != 'Pendiente':
+        if prestamo[6].lower() != 'pendiente':
             messagebox.showwarning("Advertencia", 
-                                 "Solo se pueden rechazar préstamos pendientes")
+                                "Solo se pueden rechazar préstamos pendientes")
             return
         
         # Solicitar motivo del rechazo
@@ -313,13 +317,15 @@ class PrestamosForm(tk.Toplevel):
             motivo = motivo_text.get("1.0", tk.END).strip()
             if not motivo:
                 messagebox.showwarning("Advertencia", 
-                                     "Por favor ingrese el motivo del rechazo")
+                                "Por favor ingrese el motivo del rechazo")
                 return
                 
             try:
+                # Usando el nombre completo del usuario actual
+                nombre_completo = f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}"
                 self.db_manager.rechazar_prestamo(
                     prestamo[0],  # id_prestamo
-                    self.usuario_actual['usuario'],
+                    nombre_completo,  # Nombre completo en lugar de usuario
                     motivo
                 )
                 messagebox.showinfo("Éxito", "Préstamo rechazado correctamente")
@@ -327,12 +333,12 @@ class PrestamosForm(tk.Toplevel):
                 self.cargar_prestamos()
             except Exception as e:
                 messagebox.showerror("Error", 
-                                   f"Error al rechazar préstamo: {str(e)}")
+                                f"Error al rechazar préstamo: {str(e)}")
         
         ttk.Button(dialog, text="Confirmar",
-                  command=confirmar_rechazo).pack(pady=10)
+                command=confirmar_rechazo).pack(pady=10)
         ttk.Button(dialog, text="Cancelar",
-                  command=dialog.destroy).pack()
+                command=dialog.destroy).pack()
     
     def ver_detalles(self):
         """Ver detalles del préstamo seleccionado"""
@@ -439,34 +445,36 @@ class PrestamoDetallesForm(tk.Toplevel):
         self.cargar_datos()
     
     def cargar_datos(self):
-        """Cargar datos del préstamo"""
         try:
-            # Obtener datos del préstamo
             prestamo = self.db_manager.obtener_prestamo(self.prestamo_id)
-            
-            # Actualizar widgets de información
+            if not prestamo:
+                raise ValueError("No se encontró el préstamo")
+                
+            info = {
+                'id_prestamo': prestamo.get('id_prestamo', ''),
+                'empleado': prestamo.get('empleado', ''),
+                'monto_total': f"Bs. {float(prestamo.get('monto_total', 0)):,.2f}",
+                'cuotas': f"{prestamo.get('cuotas_pagadas', 0)}/{prestamo.get('cuotas_totales', 0)}",
+                'monto_cuota': f"Bs. {float(prestamo.get('monto_cuota', 0)):,.2f}",
+                'saldo_restante': f"Bs. {float(prestamo.get('saldo_restante', 0)):,.2f}",
+                'estado': prestamo.get('estado', '').capitalize(),
+                'fecha_solicitud': prestamo.get('fecha_solicitud', '-'),
+                'fecha_aprobacion': prestamo.get('fecha_aprobacion', '-'),
+                'aprobado_por': prestamo.get('aprobado_por', '-')
+            }
+
             for key, widget in self.info_widgets.items():
-                valor = prestamo.get(key, '')
-                
-                if isinstance(valor, Decimal):
-                    texto = f"Bs. {float(valor):,.2f}"
-                elif isinstance(valor, datetime):
-                    texto = valor.strftime('%Y-%m-%d')
-                else:
-                    texto = str(valor) if valor is not None else ''
-                
-                widget.configure(text=texto)
+                widget.configure(text=info.get(key, ''))
             
-            # Actualizar motivo
             self.motivo_text.configure(state='normal')
             self.motivo_text.delete("1.0", tk.END)
             self.motivo_text.insert("1.0", prestamo.get('motivo', ''))
             self.motivo_text.configure(state='disabled')
             
-            # Cargar historial de pagos
             self.cargar_pagos()
-            
+                
         except Exception as e:
+            print(f"Error detallado: {e}")
             messagebox.showerror("Error", f"Error al cargar datos: {str(e)}")
     
     def cargar_pagos(self):
@@ -479,7 +487,7 @@ class PrestamoDetallesForm(tk.Toplevel):
         pagos = self.db_manager.obtener_pagos_prestamo(self.prestamo_id)
         for pago in pagos:
             valores = [
-                pago['fecha'].strftime('%Y-%m-%d'),
+                pago['fecha'],  # La fecha ya viene formateada desde la consulta SQL
                 f"Bs. {float(pago['monto']):,.2f}",
                 pago['periodo'],
                 f"Bs. {float(pago['saldo']):,.2f}"

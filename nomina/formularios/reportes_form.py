@@ -4,14 +4,12 @@ import os
 import subprocess
 from datetime import datetime
 
-class ReportesForm(tk.Toplevel):
+class ReportesForm(ttk.Frame):
     def __init__(self, parent, db_manager):
         super().__init__(parent)
         self.db_manager = db_manager
         
-        # Configuración básica de la ventana
-        self.title("Visor de Reportes")
-        self.geometry("1000x600")
+        self.pack(fill=tk.BOTH, expand=True)
         
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
