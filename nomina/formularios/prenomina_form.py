@@ -2,10 +2,12 @@ import os
 from tkinter import ttk, messagebox
 import tkinter as tk
 from decimal import Decimal
-from datetime import datetime
+from tkcalendar import DateEntry
+from datetime import datetime, timedelta, date
+import calendar
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 
@@ -19,6 +21,9 @@ class PrenominaForm(ttk.Frame):
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Titulo
+        ttk.Label(self.main_frame, text="Prenomina", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
         
         # Frame superior para selección de período
         self.periodo_frame = ttk.LabelFrame(self.main_frame, text="Selección de Período", padding="5")
@@ -53,6 +58,9 @@ class PrenominaForm(ttk.Frame):
             ("cedula", "Cédula"),
             ("cargo", "Cargo"),
             ("salario_base", "Salario Base"),
+            ("dias_trabajados", "Días Trabajados"),
+            ("dias_descanso", "Días Descanso"),
+            ("bonificaciones", "Bonificaciones"),
             ("seguro_social", "Seguro Social"),
             ("rpe", "RPE"),
             ("ley_pol_hab", "Ley Pol. Hab."),
@@ -115,6 +123,21 @@ class PrenominaForm(ttk.Frame):
             f"ID: {p[0]} - {p[1]} ({p[2]} - {p[3]})" for p in periodos_abiertos
         ]
 
+    def calcular_dias_periodo(self, fecha_inicio, fecha_fin, tipo_periodo):
+        """Calcula los días trabajados y de descanso en el período"""
+        dias_totales = (fecha_fin - fecha_inicio).days + 1
+        dias_descanso = 0
+        
+        # Calcular días de descanso (sábados y domingos)
+        fecha_actual = fecha_inicio
+        while fecha_actual <= fecha_fin:
+            if fecha_actual.weekday() >= 5:  # 5=Sábado, 6=Domingo
+                dias_descanso += 1
+            fecha_actual += timedelta(days=1)
+        
+        dias_trabajados = dias_totales - dias_descanso
+        return dias_trabajados, dias_descanso
+
     def calcular_salario_base_periodo(self, salario_mensual, tipo_periodo):
         """
         Calcula el salario base según el tipo de período
@@ -163,10 +186,16 @@ class PrenominaForm(ttk.Frame):
                 rpe = base_semanal * porcentaje * factor_ss_rpe
             elif nombre == "Ley de Política Habitacional":
                 # Base mensual para LPH
-                base_mensual = salario_mensual
-                if tipo_periodo != "Mensual":
-                    base_mensual = base_mensual / factor_lph
-                ley_pol_hab = base_mensual * porcentaje
+                if tipo_periodo == "Quincenal":
+                    salario_base_quincenal = salario_mensual / Decimal('2')  # Salario base quincenal
+                    factor1 = (salario_base_quincenal / Decimal('30')) * (Decimal('45') / Decimal('12'))
+                    ley_pol_hab = (factor1 + salario_base_quincenal) * porcentaje
+                else:
+                    # Mantener el cálculo original para otros períodos
+                    base_mensual = salario_mensual
+                    if tipo_periodo != "Mensual":
+                        base_mensual = base_mensual / factor_lph
+                    ley_pol_hab = base_mensual * porcentaje
         
         return seguro_social, rpe, ley_pol_hab
 
@@ -195,6 +224,14 @@ class PrenominaForm(ttk.Frame):
             return monto_prestamo / Decimal('2')  # Mitad de la cuota quincenal
         
         return monto_prestamo
+    
+
+    def calcular_bonificaciones(self, salario_base, num_inasistencias):
+        """
+        Calcula la bonificación del 5% solo si el empleado no tiene inasistencias
+        """
+        bono_asistencia = salario_base * Decimal('0.05') if num_inasistencias == 0 else Decimal('0')
+        return bono_asistencia
 
     def cargar_prenominas(self):
         """Cargar las prenóminas para el período seleccionado"""
@@ -227,11 +264,11 @@ class PrenominaForm(ttk.Frame):
             for emp in empleados:
                 # Verificar si el empleado está activo
                 status = emp[-1] if len(emp) > 7 else 'activo'
-
+                
                 # Saltar empleados inactivos
                 if status.lower() == 'inactivo':
                     continue
-
+                    
                 # Calcular salario base según tipo de período
                 salario_mensual = Decimal(str(emp[5]))
                 try:
@@ -241,8 +278,19 @@ class PrenominaForm(ttk.Frame):
                     messagebox.showerror("Error", str(e))
                     return
                 
+                # Calcular días trabajados y de descanso
+                dias_trabajados, dias_descanso = self.calcular_dias_periodo(
+                    fecha_inicio, fecha_fin, tipo_periodo)
+                
                 # Obtener inasistencias
-                num_inasistencias, _ = self.db_manager.obtener_inasistencias_empleado(emp[0], fecha_inicio, fecha_fin)
+                num_inasistencias, _ = self.db_manager.obtener_inasistencias_empleado(
+                    emp[0], fecha_inicio, fecha_fin)
+                
+                # Calcular bonificaciones
+                bonificaciones = self.calcular_bonificaciones(salario_base_periodo, num_inasistencias)
+                
+                # Ajustar días trabajados por inasistencias
+                dias_trabajados -= num_inasistencias
                 
                 # Calcular valor de inasistencias según período
                 inasistencias_valor = self.calcular_valor_inasistencias(
@@ -261,12 +309,15 @@ class PrenominaForm(ttk.Frame):
                 total_deducciones = (seguro_social + rpe + ley_pol_hab +
                                    inasistencias_valor + prestamos_valor)
                 
-                # Calcular total a pagar
-                total_a_pagar = salario_base_periodo - total_deducciones
+                # Calcular total a pagar (incluyendo bonificaciones)
+                total_a_pagar = salario_base_periodo + bonificaciones - total_deducciones
                 
-                prenomina = (emp[1], emp[2], emp[3], emp[4], salario_base_periodo,
-                            seguro_social, rpe, ley_pol_hab, num_inasistencias,
-                            prestamos_valor, total_deducciones, total_a_pagar)
+                prenomina = (
+                    emp[1], emp[2], emp[3], emp[4], salario_base_periodo,
+                    dias_trabajados, dias_descanso, bonificaciones,
+                    seguro_social, rpe, ley_pol_hab, num_inasistencias,
+                    prestamos_valor, total_deducciones, total_a_pagar
+                )
                 
                 self.prenominas.append(prenomina)
                 
@@ -341,11 +392,14 @@ class PrenominaForm(ttk.Frame):
                         cedula = str(empleado_data[2])
                         cargo = str(empleado_data[3])
                         sueldo = float(empleado_data[4].replace(',', '')) if isinstance(empleado_data[4], str) else float(empleado_data[4])
-                        seguro_social = float(empleado_data[5].replace(',', '')) if isinstance(empleado_data[5], str) else float(empleado_data[5])
-                        rpe = float(empleado_data[6].replace(',', '')) if isinstance(empleado_data[6], str) else float(empleado_data[6])
-                        ley_pol_hab = float(empleado_data[7].replace(',', '')) if isinstance(empleado_data[7], str) else float(empleado_data[7])
-                        inasistencias = float(empleado_data[8].replace(',', '')) if isinstance(empleado_data[8], str) else float(empleado_data[8])
-                        prestamos = float(empleado_data[9].replace(',', '')) if isinstance(empleado_data[9], str) else float(empleado_data[9])
+                        dias_trabajados = int(empleado_data[5]) if isinstance(empleado_data[5], str) else empleado_data[5]
+                        dias_descanso = int(empleado_data[6]) if isinstance(empleado_data[6], str) else empleado_data[6]
+                        bonificaciones = float(empleado_data[7].replace(',', '')) if isinstance(empleado_data[7], str) else float(empleado_data[7])
+                        seguro_social = float(empleado_data[8].replace(',', '')) if isinstance(empleado_data[8], str) else float(empleado_data[8])
+                        rpe = float(empleado_data[9].replace(',', '')) if isinstance(empleado_data[9], str) else float(empleado_data[9])
+                        ley_pol_hab = float(empleado_data[10].replace(',', '')) if isinstance(empleado_data[10], str) else float(empleado_data[10])
+                        inasistencias = int(empleado_data[11]) if isinstance(empleado_data[11], str) else empleado_data[11]
+                        prestamos = float(empleado_data[12].replace(',', '')) if isinstance(empleado_data[12], str) else float(empleado_data[12])
                         
                         # Procesar préstamos del empleado
                         if prestamos > 0:
@@ -375,6 +429,7 @@ class PrenominaForm(ttk.Frame):
                                 'ley_pol_hab': ley_pol_hab,
                                 'inasistencias': inasistencias,
                                 'prestamos': prestamos,
+                                'bonificaciones': bonificaciones,
                                 'periodo_info': periodo_info
                             })
                         
@@ -412,9 +467,9 @@ class PrenominaForm(ttk.Frame):
             widget.destroy()
 
     def generar_pdf_nomina(self, filename, data):
-        """Genera el PDF de nómina individual"""
+        """Genera un PDF de nómina con diseño mejorado y cálculos precisos."""
         doc = SimpleDocTemplate(filename, pagesize=letter, 
-                            topMargin=0.5*inch, bottomMargin=0.5*inch)
+                                topMargin=0.5*inch, bottomMargin=0.5*inch)
         elements = []
 
         styles = getSampleStyleSheet()
@@ -424,79 +479,123 @@ class PrenominaForm(ttk.Frame):
         # Encabezado
         elements.append(Paragraph("R.H.G. INVERSIONES, C.A.", title_style))
         elements.append(Paragraph("COMPROBANTE DE PAGO", title_style))
-        elements.append(Paragraph(f"PERÍODO: {data['periodo_info'][1].upper()}", title_style))
-        elements.append(Paragraph(
-            f"DEL {data['periodo_info'][2]} AL {data['periodo_info'][3]}", 
-            title_style
-        ))
-        elements.append(Paragraph("DATOS DEL TRABAJADOR", title_style))
-        elements.append(Spacer(1, 0.25*inch))
+        elements.append(Spacer(1, 0.3 * inch))
 
-        # Datos del empleado
-        employee_data = [
-            ["Sueldo", "Apellidos y Nombres", "Cédula"],
-            [f"{data['sueldo']:,.2f}", f"{data['nombre']} {data['apellido']}", data['cedula']],
-            ["Cargo", "Unidad de Adscripción", ""],
-            [data['cargo'], "Administración", ""]
+        # Bloque de información del período
+        periodo_info = [
+            [f"Período:", f"{data['periodo_info'][1].upper()}"],
+            [f"Del:", f"{data['periodo_info'][2]} al {data['periodo_info'][3]}"]
+        ]
+        t_periodo = Table(periodo_info, colWidths=[2 * inch, 4 * inch])
+        t_periodo.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(t_periodo)
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Bloque de datos del trabajador
+        trabajador_info = [
+            [f"Apellidos y Nombres:", f"{data['apellido']} {data['nombre']}"],
+            [f"Cédula:", f"{data['cedula']}"],
+            [f"Cargo:", f"{data['cargo']}"]
+        ]
+        t_trabajador = Table(trabajador_info, colWidths=[2.5 * inch, 3.5 * inch])
+        t_trabajador.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ]))
+        elements.append(t_trabajador)
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Tabla de conceptos - Asignaciones
+        asignaciones_data = [
+            ["ASIGNACIONES", "Días/Porc.", "Monto", ""],
+            ["Sueldo Base", f"{data.get('dias_trabajados', 15)}", f"{data['sueldo']:,.2f}", ""],
+            ["Bono por Asistencia (5%)", "5%", f"{data['bonificaciones']:,.2f}", ""],
         ]
 
-        # Conceptos
-        concepts_data = [
-            ["Concepto", "Referencia", "Asignación", "Deducción"],
-            ["DIAS TRABAJADOS", "15", f"{data['sueldo']:,.2f}", ""],
-            ["SEGURO SOCIAL OBLIGATORIO", "2", "", f"{data['seguro_social']:,.2f}"],
-            ["REGIMEN PRESTACIONAL DE EMPLEO", "2", "", f"{data['rpe']:,.2f}"],
-            ["FONDO DE AHORRO OBLIGATORIO P/VIVIENDA", "0.01", "", f"{data['ley_pol_hab']:,.2f}"],
-            ["INASISTENCIAS", "", "", f"{data['inasistencias']:,.2f}"],
-            ["PRÉSTAMOS", "", "", f"{data['prestamos']:,.2f}"]
+        # Tabla de conceptos - Deducciones
+        deducciones_data = [
+            ["DEDUCCIONES", "Base", "Porc.", "Monto"],
+            ["S.S.O.", f"{data['sueldo']:,.2f}", "4%", f"{data['seguro_social']:,.2f}"],
+            ["R.P.E.", f"{data['sueldo']:,.2f}", "0.5%", f"{data['rpe']:,.2f}"],
+            ["F.A.O.V.", f"{data['sueldo']:,.2f}", "1%", f"{data['ley_pol_hab']:,.2f}"],
         ]
 
-        # Totales
-        total_asignaciones = data['sueldo']
+        # Agregar inasistencias y préstamos si existen
+        if data['inasistencias'] > 0:
+            deducciones_data.append(["Inasistencias", f"{data['inasistencias']} día(s)", "", f"{data['inasistencias']:,.2f}"])
+        if data['prestamos'] > 0:
+            deducciones_data.append(["Préstamos", "", "", f"{data['prestamos']:,.2f}"])
+
+        # Calcular totales
+        total_asignaciones = data['sueldo'] + data['bonificaciones']
         total_deducciones = (data['seguro_social'] + data['rpe'] + 
                             data['ley_pol_hab'] + data['inasistencias'] + 
                             data['prestamos'])
         neto_a_cobrar = total_asignaciones - total_deducciones
 
-        concepts_data.extend([
-            ["Total Asignaciones y Deducciones", "", 
-            f"{total_asignaciones:,.2f}", f"{total_deducciones:,.2f}"],
-            ["", "Neto a Cobrar", f"{neto_a_cobrar:,.2f}", ""]
-        ])
+        # Totales
+        totales_data = [
+            ["TOTALES", "", "", ""],
+            ["Total Asignaciones", "", f"{total_asignaciones:,.2f}", ""],
+            ["Total Deducciones", "", "", f"{total_deducciones:,.2f}"],
+            ["NETO A COBRAR", "", f"{neto_a_cobrar:,.2f}", ""]
+        ]
 
-        # Combinar datos
-        table_data = employee_data + concepts_data
+        # Combinar todas las tablas
+        all_data = []
+        all_data.extend(asignaciones_data)
+        all_data.append(["", "", "", ""])  # Espacio entre secciones
+        all_data.extend(deducciones_data)
+        all_data.append(["", "", "", ""])  # Espacio entre secciones
+        all_data.extend(totales_data)
 
-        # Crear tabla
-        t = Table(table_data, colWidths=[2.5*inch, 2*inch, 1.5*inch, 1.5*inch])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        t_conceptos = Table(all_data, colWidths=[2.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+        t_conceptos.setStyle(TableStyle([
+            # Estilo para encabezados de sección
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
+            ('BACKGROUND', (0, len(asignaciones_data) + 1), (-1, len(asignaciones_data) + 1), colors.lightblue),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('TEXTCOLOR', (0, len(asignaciones_data) + 1), (-1, len(asignaciones_data) + 1), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('TOPPADDING', (0, 1), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ('FONTNAME', (0, len(asignaciones_data) + 1), (-1, len(asignaciones_data) + 1), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            # Estilo para totales
+            ('FONTNAME', (0, -4), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
         ]))
+        elements.append(t_conceptos)
+        elements.append(Spacer(1, 0.3 * inch))
 
-        elements.append(t)
-        elements.append(Spacer(1, 0.5*inch))
-        
-        # Pie de página
+        # Pie de firma
         elements.append(Paragraph(
             "Declaro haber recibido conforme el monto que me corresponde para el "
-            "período según los indicado por los conceptos especificados en este "
-            "recibo de pago.",
+            "período según los conceptos especificados en este recibo de pago.",
             styles['Normal']
         ))
-        elements.append(Spacer(1, 0.25*inch))
-        elements.append(Paragraph("Firma: _______________________", styles['Normal']))
-        elements.append(Paragraph("Cédula: ______________________", styles['Normal']))
+        elements.append(Spacer(1, 0.5 * inch))
+
+        # Tabla de firma
+        firma_data = [
+            ["_____________________", "_____________________", "_____________________"],
+            ["Firma del Empleado", "Cédula", "Fecha"],
+        ]
+        t_firma = Table(firma_data, colWidths=[2*inch, 2*inch, 2*inch])
+        t_firma.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(t_firma)
 
         doc.build(elements)

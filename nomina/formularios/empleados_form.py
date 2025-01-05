@@ -633,97 +633,98 @@ class EmpleadosForm(ttk.Frame):
         self.pack(fill=tk.BOTH, expand=True)
         
         # Frame principal
-        self.main_frame = ttk.Frame(self, padding="10")
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame = ttk.Frame(self, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Frame superior con título, búsqueda y botón de nuevo empleado
-        self.crear_frame_superior()
-        
-        # Frame para el Treeview
-        self.crear_frame_lista()
-        
-        # Frame para botones de acción
-        self.crear_frame_acciones()
-        
-        # Cargar datos iniciales
-        self.cargar_empleados()
-        
-        # Bindings
-        self.tree.bind('<Double-1>', lambda e: self.ver_detalles())
-        self.search_var.trace('w', lambda *args: self.filtrar_empleados())
+        # Titulo
+        ttk.Label(main_frame, text="Lista de Empleados", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
 
-    def crear_frame_superior(self):
-        """Crear frame superior con título, búsqueda y botón nuevo"""
-        top_frame = ttk.Frame(self.main_frame)
-        top_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Frame para búsqueda
+        search_frame = ttk.LabelFrame(main_frame, text="Búsqueda de Empleado", padding="5")
+        search_frame.pack(fill=tk.X, pady=5)
         
-        # Título
-        ttk.Label(top_frame, text="Lista de Empleados", 
-                 font=('Helvetica', 12, 'bold')).pack(side=tk.LEFT, pady=5)
-        
-        # Botón Nuevo Empleado
-        ttk.Button(top_frame, text="Nuevo Empleado",
-                  command=self.abrir_registro).pack(side=tk.RIGHT, padx=5)
-        
-        # Frame de búsqueda
-        search_frame = ttk.LabelFrame(top_frame, text="Búsqueda", padding=5)
-        search_frame.pack(side=tk.RIGHT, padx=5)
-        
-        ttk.Label(search_frame, text="🔍").pack(side=tk.LEFT, padx=5)
+        ttk.Label(search_frame, text="Buscar:").pack(side=tk.LEFT, padx=5)
         self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(search_frame, 
-                                    textvariable=self.search_var,
-                                    width=30)
+        self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=30)
         self.search_entry.pack(side=tk.LEFT, padx=5)
-
-    def crear_frame_lista(self):
-        """Crear frame con el Treeview de empleados"""
-        # Crear Treeview con ID oculto
-        self.tree = ttk.Treeview(self.main_frame, columns=(
-            "ID", "Nombre", "Apellido", "Cedula", "Cargo", "Salario", 
-            "Fecha_Contratacion", "Status"), 
-            show='headings', displaycolumns=(
-            "Nombre", "Apellido", "Cedula", "Cargo", "Salario", 
-            "Fecha_Contratacion", "Status"))
         
-        # Configurar columnas
-        self.tree.column("ID", width=0, stretch=False)
-        self.tree.column("Nombre", width=150)
-        self.tree.column("Apellido", width=150)
-        self.tree.column("Cedula", width=100)
-        self.tree.column("Cargo", width=120)
-        self.tree.column("Salario", width=100)
-        self.tree.column("Fecha_Contratacion", width=120)
-        self.tree.column("Status", width=80)
+        ttk.Label(search_frame, text="Status:").pack(side=tk.LEFT, padx=5)
+        self.status_var = tk.StringVar(value="Todos")
+        status_combo = ttk.Combobox(search_frame, 
+                                  textvariable=self.status_var,
+                                  values=["Todos", "Activo", "Inactivo"],
+                                  state="readonly", 
+                                  width=15)
+        status_combo.pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(search_frame, text="Nuevo Empleado",
+                  command=self.abrir_registro).pack(side=tk.RIGHT, padx=5)
+
+        # Frame para el Treeview
+        tree_frame = ttk.Frame(main_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Crear Treeview sin el ID
+        self.tree = ttk.Treeview(tree_frame, columns=(
+            "id", "nombre", "apellido", "cedula", "cargo", "salario", 
+            "fecha_contratacion", "status"
+        ), show='headings')
         
         # Configurar encabezados
-        for col in self.tree['columns']:
-            self.tree.heading(col, text=col.replace('_', ' '))
+        self.tree.heading("id", text="ID")
+        self.tree.heading("nombre", text="Nombre")
+        self.tree.heading("apellido", text="Apellido")
+        self.tree.heading("cedula", text="Cédula")
+        self.tree.heading("cargo", text="Cargo")
+        self.tree.heading("salario", text="Salario")
+        self.tree.heading("fecha_contratacion", text="Fecha Contratación")
+        self.tree.heading("status", text="Status")
         
-        # Scrollbars
-        vsb = ttk.Scrollbar(self.main_frame, orient="vertical", command=self.tree.yview)
-        hsb = ttk.Scrollbar(self.main_frame, orient="horizontal", command=self.tree.xview)
+        # Configurar columnas
+        self.tree.column("id", width=0, stretch=False)
+        self.tree.column("nombre", width=150)
+        self.tree.column("apellido", width=150)
+        self.tree.column("cedula", width=100)
+        self.tree.column("cargo", width=120)
+        self.tree.column("salario", width=100)
+        self.tree.column("fecha_contratacion", width=120)
+        self.tree.column("status", width=80)
+        
+        # Configurar Scrollbars
+        vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        hsb = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         
-        # Grid layout
+        # Empaquetar Treeview y Scrollbars
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
         hsb.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        # Configurar tags para estados
-        self.tree.tag_configure('inactivo', foreground='gray')
 
-    def crear_frame_acciones(self):
-        """Crear frame con botones de acción"""
-        button_frame = ttk.Frame(self.main_frame)
-        button_frame.pack(fill=tk.X, pady=5)
+        # Configurar tags de colores
+        self.tree.tag_configure('inactivo', foreground='gray')
         
-        ttk.Button(button_frame, text="Ver Detalles", 
+        # Frame para botones 
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # Centrar los botones
+        center_buttons = ttk.Frame(buttons_frame)
+        center_buttons.pack(pady=5)
+        
+        ttk.Button(center_buttons, text="Ver Detalles",
                   command=self.ver_detalles).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cambiar Status",
+        ttk.Button(center_buttons, text="Cambiar Status",
                   command=self.cambiar_status).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Actualizar Lista",
+        ttk.Button(center_buttons, text="Actualizar Lista",
                   command=self.cargar_empleados).pack(side=tk.LEFT, padx=5)
+        
+        # Eventos
+        self.search_var.trace('w', lambda *args: self.filtrar_empleados())
+        self.status_var.trace('w', lambda *args: self.filtrar_empleados())
+        self.tree.bind('<Double-1>', lambda e: self.ver_detalles())
+        
+        # Cargar los empleados
+        self.cargar_empleados()
 
     def abrir_registro(self):
         """Abrir formulario de registro de nuevo empleado"""
@@ -855,8 +856,8 @@ class EmpleadosForm(ttk.Frame):
             messagebox.showerror("Error", f"Error al cargar empleados: {str(e)}")
 
     def filtrar_empleados(self):
-        """Filtrar empleados según el texto de búsqueda"""
         texto = self.search_var.get().lower()
+        status_filtro = self.status_var.get().lower()  # Obtener el status seleccionado
         
         # Limpiar Treeview
         for item in self.tree.get_children():
@@ -865,13 +866,17 @@ class EmpleadosForm(ttk.Frame):
         try:
             empleados = self.db_manager.ver_empleados()
             for emp in empleados:
-                # Verificar si el texto de búsqueda está en algún campo
-                if any(str(valor).lower().find(texto) >= 0 for valor in emp):
-                    valores = list(emp)
-                    valores[5] = f"{float(valores[5]):,.2f}"
-                    status = valores[7] if len(valores) > 7 else 'activo'
-                    if len(valores) <= 7:
-                        valores.append(status)
+                valores = list(emp)
+                valores[5] = f"{float(valores[5]):,.2f}"  # Formatear salario
+                status = valores[7] if len(valores) > 7 else 'activo'
+                if len(valores) <= 7:
+                    valores.append(status)
+                
+                # Verificar si cumple ambos filtros
+                cumple_status = status_filtro == 'todos' or status.lower() == status_filtro
+                cumple_busqueda = any(str(valor).lower().find(texto) >= 0 for valor in valores)
+                
+                if cumple_status and cumple_busqueda:
                     self.tree.insert('', 'end', values=valores, tags=(status.lower(),))
         except Exception as e:
             messagebox.showerror("Error", f"Error al filtrar empleados: {str(e)}")

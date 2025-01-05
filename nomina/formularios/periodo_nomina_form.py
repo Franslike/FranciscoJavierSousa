@@ -13,6 +13,9 @@ class PeriodoNominaForm(ttk.Frame):
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Titulo
+        ttk.Label(self.main_frame, text="Gestión de Periodos", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
         
         # Frame para crear nuevo período
         self.crear_periodo_frame = ttk.LabelFrame(self.main_frame, text="Crear Nuevo Período", padding="10")

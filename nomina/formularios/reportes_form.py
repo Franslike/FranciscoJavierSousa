@@ -14,6 +14,9 @@ class ReportesForm(ttk.Frame):
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Titulo
+        ttk.Label(self.main_frame, text="Reportes", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
         
         # Frame superior para filtros
         self.filtros_frame = ttk.LabelFrame(self.main_frame, text="Filtros", padding="5")

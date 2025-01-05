@@ -12,6 +12,9 @@ class NfcForm(ttk.Frame):
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Titulo
+        ttk.Label(self.main_frame, text="Tarjetas NFC", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
         
         # Frame para registro
         self.registro_frame = ttk.LabelFrame(self.main_frame, text="Registro de Tarjeta NFC", padding="10")

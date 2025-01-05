@@ -113,6 +113,9 @@ class PrestamosForm(ttk.Frame):
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Titulo
+        ttk.Label(self.main_frame, text="Prestamos", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
         
         # Frame superior
         self.top_frame = ttk.Frame(self.main_frame)

@@ -10,11 +10,14 @@ class GestionUsuariosForm(ttk.Frame):
         
         self.pack(fill=tk.BOTH, expand=True)
         
-        # Main container
+        # Frame principal
         main_frame = ttk.Frame(self, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Titulo
+        ttk.Label(main_frame, text="Lista de Usuarios", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
         
-        # Search frame
+        # Frame de búsqueda
         search_frame = ttk.LabelFrame(main_frame, text="Búsqueda de Usuario", padding="5")
         search_frame.pack(fill=tk.X, pady=5)
         
@@ -30,16 +33,16 @@ class GestionUsuariosForm(ttk.Frame):
                                   state="readonly", width=15)
         estado_combo.pack(side=tk.LEFT, padx=5)
         
-        # Tree frame
+        # Frame para el Treeview
         tree_frame = ttk.Frame(main_frame)
         tree_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        # Users Treeview
+        # Crear Treeview sin el ID
         self.tree = ttk.Treeview(tree_frame, columns=(
             "id", "empleado", "usuario", "rol", "estado", "ultimo_acceso", "intentos"
         ), show='headings')
         
-        # Configure columns
+        # Configurar encabezados
         self.tree.heading("id", text="ID")
         self.tree.heading("empleado", text="Empleado")
         self.tree.heading("usuario", text="Usuario")
@@ -48,7 +51,7 @@ class GestionUsuariosForm(ttk.Frame):
         self.tree.heading("ultimo_acceso", text="Último Acceso")
         self.tree.heading("intentos", text="Intentos Fallidos")
         
-        # Column widths
+        # Configurar columnas
         self.tree.column("id", width=0, stretch=False)
         self.tree.column("empleado", width=200)
         self.tree.column("usuario", width=100)
@@ -57,19 +60,19 @@ class GestionUsuariosForm(ttk.Frame):
         self.tree.column("ultimo_acceso", width=150)
         self.tree.column("intentos", width=100)
         
-        # Scrollbar
+        # Configurar scrollbar
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         
-        # Pack tree and scrollbar
+        # Empaquetar Treeview y Scrollbar
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Action buttons frame at the bottom
+        # Frame para botones de acción
         buttons_frame = ttk.Frame(main_frame)
         buttons_frame.pack(fill=tk.X, pady=(10, 0))
         
-        # Center the buttons using a second frame
+        # Centrar botones
         center_buttons = ttk.Frame(buttons_frame)
         center_buttons.pack(pady=5)
         
@@ -84,15 +87,15 @@ class GestionUsuariosForm(ttk.Frame):
         ttk.Button(center_buttons, text="Actualizar",
                   command=self.cargar_usuarios).pack(side=tk.LEFT, padx=5)
         
-        # Configure tags for status colors
+        # Configurar tags de colores
         self.tree.tag_configure('bloqueado', background='#ffcccb')
         self.tree.tag_configure('inactivo', background='#d3d3d3')
         
-        # Bind events
+        # Configurar eventos
         self.search_var.trace('w', lambda *args: self.filtrar_usuarios())
         self.estado_var.trace('w', lambda *args: self.filtrar_usuarios())
         
-        # Load initial data
+        # Cargar usuarios
         self.cargar_usuarios()
     
     def cargar_usuarios(self):
