@@ -2,13 +2,29 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
 from datetime import datetime, timedelta
+from util.ayuda import Ayuda
 
 class PeriodoNominaForm(ttk.Frame):
-    def __init__(self, parent, db_manager):
+    def __init__(self, parent, db_manager, usuario_actual):
         super().__init__(parent)
         self.db_manager = db_manager
+        self.usuario_actual = usuario_actual
+        self.sistema_ayuda = Ayuda()
+
+        self.bind_all("<F1>", self.mostrar_ayuda)
         
         self.pack(fill=tk.BOTH, expand=True)
+
+        # Verificar permisos
+        alcance = self.db_manager.verificar_permiso(
+            usuario_actual['id_usuario'], 
+            'periodos.gestion'
+        )
+
+        if not alcance or alcance != 'GLOBAL':
+            messagebox.showerror("Error", "No tienes los permisos suficientes para ingresar a este módulo.")
+            self.destroy()
+            return
         
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
@@ -34,14 +50,14 @@ class PeriodoNominaForm(ttk.Frame):
         # Fecha inicio
         ttk.Label(self.crear_periodo_frame, text="Fecha Inicio:").grid(row=1, column=0, padx=5, pady=5)
         self.fecha_inicio = DateEntry(self.crear_periodo_frame, width=12, background='darkblue',
-                                    foreground='white', borderwidth=2)
+                                    date_pattern='dd/mm/yyyy', foreground='white', borderwidth=2)
         self.fecha_inicio.grid(row=1, column=1, padx=5, pady=5)
         self.fecha_inicio.bind("<<DateEntrySelected>>", self.actualizar_fecha_fin)
         
         # Fecha fin
         ttk.Label(self.crear_periodo_frame, text="Fecha Fin:").grid(row=2, column=0, padx=5, pady=5)
         self.fecha_fin = DateEntry(self.crear_periodo_frame, width=12, background='darkblue',
-                                 foreground='white', borderwidth=2)
+                                 date_pattern='dd/mm/yyyy', foreground='white', borderwidth=2)
         self.fecha_fin.grid(row=2, column=1, padx=5, pady=5)
         
         # Botón crear período
@@ -88,8 +104,6 @@ class PeriodoNominaForm(ttk.Frame):
         # Botones de acción
         ttk.Button(self.acciones_frame, text="Cerrar Período",
                   command=self.cerrar_periodo).pack(side=tk.LEFT, padx=5)
-        ttk.Button(self.acciones_frame, text="Ver Historial",
-                  command=self.ver_historial).pack(side=tk.LEFT, padx=5)
         ttk.Button(self.acciones_frame, text="Actualizar Lista",
                   command=self.cargar_periodos).pack(side=tk.LEFT, padx=5)
         
@@ -101,6 +115,10 @@ class PeriodoNominaForm(ttk.Frame):
         
         # Variable para almacenar el período seleccionado
         self.periodo_seleccionado = None
+
+    def mostrar_ayuda(self, event=None):
+        """Muestra la ayuda contextual del módulo de empleados"""
+        self.sistema_ayuda.mostrar_ayuda('periodos')
 
     def actualizar_fechas(self, event=None):
         """Actualizar las fechas cuando cambia el tipo de período"""
@@ -205,8 +223,20 @@ class PeriodoNominaForm(ttk.Frame):
                 fecha_inicio=fecha_inicio,
                 fecha_fin=fecha_fin,
                 tipo=tipo,
-                creado_por="admin"  # Aquí deberías usar el usuario actual
-            )
+                creado_por=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}")
+            # Detalles para auditoria
+            detalle = (f"Creación de período:\n"
+                       f"Tipo: {tipo}\n"
+                       f"Fecha Inicio: {fecha_inicio}\n"
+                       f"Fecha Fin: {fecha_fin}\n"
+                       f"Registrado por: {self.usuario_actual['nombre']} {self.usuario_actual['apellido']}")
+
+            self.db_manager.registrar_auditoria(
+                usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                rol=f"{self.usuario_actual['rol']}",
+                accion='Creó período',
+                tabla='periodos_nomina',
+                detalle=detalle)
             
             messagebox.showinfo("Éxito", "Período creado correctamente")
             self.cargar_periodos()
@@ -237,9 +267,20 @@ class PeriodoNominaForm(ttk.Frame):
             try:
                 self.db_manager.cerrar_periodo(
                     self.periodo_seleccionado,
-                    cerrado_por="admin",  # Aquí deberías usar el usuario actual
-                    motivo="Cierre regular de período"
-                )
+                    cerrado_por=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                    motivo="Cierre regular de período")
+                # Detalles para auditoria
+                detalle = (f"Cierre de período:\n"
+                           f"ID: {self.periodo_seleccionado}\n"
+                           f"Cerrado por: {self.usuario_actual['nombre']} {self.usuario_actual['apellido']}\n"
+                           f"Motivo: Cierre regular de período")
+
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                    rol=f"{self.usuario_actual['rol']}",
+                    accion='Cerró período',
+                    tabla='periodos_nomina',
+                    detalle=detalle)
                 messagebox.showinfo("Éxito", "Período cerrado correctamente")
                 self.cargar_periodos()
             except Exception as e:

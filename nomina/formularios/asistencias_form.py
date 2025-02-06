@@ -1,15 +1,35 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
+import os
+import shutil
 from tkcalendar import DateEntry
 from datetime import datetime, timedelta
 import calendar
+from util.ayuda import Ayuda
 
 class AsistenciasForm(ttk.Frame):
-    def __init__(self, parent, db_manager):
+    def __init__(self, parent, db_manager, usuario_actual):
         super().__init__(parent)
         self.db_manager = db_manager
+        self.usuario_actual = usuario_actual
+        self.sistema_ayuda = Ayuda()
+
+        self.bind_all("<F1>", self.mostrar_ayuda)
         
         self.pack(fill=tk.BOTH, expand=True)
+
+        # Verificar permisos
+        alcance = self.db_manager.verificar_permiso(
+            usuario_actual['id_usuario'], 
+            'nomina.asistencias'
+        )
+        
+        if not alcance:
+            messagebox.showerror("Error", "No tienes los permisos suficientes para acceder a este módulo.")
+            self.destroy()
+            return
+            
+        self.tiene_acceso_global = alcance == 'GLOBAL'
         
         # Constantes para la lógica de asistencias
         self.HORAS_LABORALES = 8
@@ -39,11 +59,11 @@ class AsistenciasForm(ttk.Frame):
         
         # Filtro por fecha
         ttk.Label(self.filtros_frame, text="Desde:").pack(side=tk.LEFT, padx=5)
-        self.fecha_inicio = DateEntry(self.filtros_frame, width=12)
+        self.fecha_inicio = DateEntry(self.filtros_frame, width=12, date_pattern='dd/mm/yyyy')
         self.fecha_inicio.pack(side=tk.LEFT, padx=5)
         
         ttk.Label(self.filtros_frame, text="Hasta:").pack(side=tk.LEFT, padx=5)
-        self.fecha_fin = DateEntry(self.filtros_frame, width=12)
+        self.fecha_fin = DateEntry(self.filtros_frame, width=12, date_pattern='dd/mm/yyyy')
         self.fecha_fin.pack(side=tk.LEFT, padx=5)
         
         # Botón para aplicar filtros
@@ -101,6 +121,25 @@ class AsistenciasForm(ttk.Frame):
         ttk.Button(self.botones_frame, text="Ver Detalles",
                   command=self.ver_detalles).pack(side=tk.LEFT, padx=5)
         
+        # Configurar interfaz según permisos
+        if not self.tiene_acceso_global:
+            self.empleado_combo.configure(state='disabled')
+            # Buscar y deshabilitar específicamente el botón de justificación
+            for button in self.botones_frame.winfo_children():
+                if button['text'] == "Justificar Inasistencia":
+                    button.configure(state='disabled')
+                    
+            # Obtener información del empleado
+            query = """
+            SELECT nombre, apellido, cedula_identidad 
+            FROM empleados 
+            WHERE id_empleado = %s
+            """
+            empleado = self.db_manager.ejecutar_query(query, (self.usuario_actual['id_empleado'],), fetchone=True)
+            if empleado:
+                self.empleado_var.set(f"{empleado[0]} {empleado[1]} - {empleado[2]}")
+            self.empleado_combo.configure(state='disabled')
+        
         # Configurar estilos visuales para estados
         self.tree.tag_configure('retardo', background='#fff3cd')     # Amarillo claro
         self.tree.tag_configure('presente', background='#d4edda')    # Verde claro
@@ -110,6 +149,10 @@ class AsistenciasForm(ttk.Frame):
         
         # Cargar empleados en el combo
         self.cargar_empleados()
+
+    def mostrar_ayuda(self, event=None):
+        """Muestra la ayuda contextual del módulo de empleados"""
+        self.sistema_ayuda.mostrar_ayuda('asistencias')
         
     def cargar_empleados(self):
         """
@@ -154,9 +197,6 @@ class AsistenciasForm(ttk.Frame):
             self.cargar_asistencias()
 
     def cargar_asistencias(self):
-        """
-        Carga las asistencias con la nueva lógica de estados y horas trabajadas
-        """
         # Limpiar Treeview
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -167,17 +207,16 @@ class AsistenciasForm(ttk.Frame):
         # Obtener empleado seleccionado
         id_empleado = None
         if self.empleado_var.get():
-            cedula = self.empleado_var.get().split('-')[1].strip()
-            empleados = self.db_manager.ver_empleados()
-
-            # Filtrar solo empleados activos
-            empleados_activos = [emp for emp in empleados if len(emp) <= 7 or emp[7].lower() != 'inactivo']
-
-            for emp in empleados_activos:
-                if emp[3] == cedula:
-                    id_empleado = emp[0]
-                    break
-        
+            if not self.tiene_acceso_global:
+                id_empleado = self.usuario_actual['id_empleado']
+            else:
+                cedula = self.empleado_var.get().split('-')[1].strip()
+                empleados = self.db_manager.ver_empleados()
+                empleados_activos = [emp for emp in empleados if len(emp) <= 7 or emp[7].lower() != 'inactivo']
+                for emp in empleados_activos:
+                    if emp[3] == cedula:
+                        id_empleado = emp[0]
+                        break
         try:
             # Obtener registros
             registros = self.db_manager.obtener_asistencias(fecha_inicio, fecha_fin, id_empleado)
@@ -245,7 +284,7 @@ class AsistenciasForm(ttk.Frame):
                     obs = observacion
                 
                 valores = [
-                    fecha.strftime('%Y-%m-%d') if isinstance(fecha, datetime) else fecha,
+                    fecha if isinstance(fecha, str) else fecha.strftime('%d-%m-%Y'),
                     empleado,
                     cedula,
                     entrada or '',
@@ -288,6 +327,7 @@ class AsistenciasForm(ttk.Frame):
     def calcular_estado_asistencia(self, entrada, salida, estado_actual=None):
         """
         Calcula el estado de la asistencia basado en las horas trabajadas y los horarios.
+        Si trabaja menos de 4 horas se considera inasistencia.
         """
         if estado_actual == 'Justificada':
             return 'Justificada', 8.0, "Asistencia justificada"
@@ -327,6 +367,10 @@ class AsistenciasForm(ttk.Frame):
             
         horas_trabajadas = (salida_dt - entrada_dt).total_seconds() / 3600
         
+        # Si trabajó menos de 4 horas, se considera inasistencia
+        if horas_trabajadas < 4:
+            return 'Ausente', 0.0, f"Trabajó menos de media jornada ({horas_trabajadas:.1f} hrs)"
+            
         # Verificar retardo
         minutos_retardo = (entrada_dt - datetime.combine(datetime.today(), hora_inicio_esperada)).total_seconds() / 60
         
@@ -339,19 +383,19 @@ class AsistenciasForm(ttk.Frame):
             
         return 'Presente', horas_trabajadas, "Asistencia completa"
 
+
     def justificar_inasistencia(self):
-        """
-        Justifica una inasistencia y establece las horas trabajadas en 8
-        """
         selected = self.tree.selection()
         if not selected:
             messagebox.showwarning("Advertencia", "Por favor seleccione un registro")
             return
             
-        # Obtener datos del registro seleccionado
         item = self.tree.item(selected[0])
-        estado = item['values'][6]  # Índice del estado
-        
+        fecha = item['values'][0]
+        empleado = item['values'][1]
+        cedula = item['values'][2]
+        estado = item['values'][6]
+
         if estado == 'Justificada':
             messagebox.showinfo("Información", "Esta asistencia ya está justificada")
             return
@@ -360,125 +404,209 @@ class AsistenciasForm(ttk.Frame):
             messagebox.showinfo("Información", "No se pueden justificar asistencias completas")
             return
             
-        # Crear ventana de justificación con la lógica existente...
-        # [El resto del código de justificación permanece igual]
+        dialog = tk.Toplevel(self)
+        dialog.title("Justificar Inasistencia/Registro Incompleto")
+        dialog.geometry("500x680")
+        
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-    def justificar_inasistencia(self):
-        """
-        Justificar una inasistencia o registro incompleto
-        """
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showwarning("Advertencia", "Por favor seleccione un registro")
-            return
-            
-        # Obtener datos del registro seleccionado
-        item = self.tree.item(selected[0])
-        fecha = item['values'][0]  # Fecha
-        empleado = item['values'][1]  # Nombre del empleado
-        cedula = item['values'][2]  # Cédula
-        estado = item['values'][6]  # Estado
+        # Información del empleado
+        info_frame = ttk.LabelFrame(main_frame, text="Información", padding="10")
+        info_frame.pack(fill=tk.X, pady=(0,15))
+        
+        campos = [
+            ("Empleado:", empleado),
+            ("Cédula:", cedula),
+            ("Fecha:", fecha),
+            ("Estado actual:", estado)
+        ]
+        
+        for i, (label, value) in enumerate(campos):
+            ttk.Label(info_frame, text=label, font=('Helvetica', 9, 'bold')).grid(
+                row=i, column=0, sticky='e', padx=5, pady=2)
+            ttk.Label(info_frame, text=value).grid(
+                row=i, column=1, sticky='w', padx=5, pady=2)
 
-        # Validar el estado
-        if estado == 'Justificada':
-            messagebox.showinfo("Información", "Esta asistencia ya está justificada")
-            return
-        
-        if estado == 'Presente':
-            messagebox.showinfo("Información", "No se pueden justificar asistencias completas")
-            return
-            
-        # Crear ventana de justificación
-        self.justificar_window = tk.Toplevel(self)
-        self.justificar_window.title("Justificar Inasistencia/Registro Incompleto")
-        self.justificar_window.geometry("500x600")
-        
-        # Frame principal
-        frame = ttk.Frame(self.justificar_window, padding="10")
-        frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Mostrar información del empleado
-        ttk.Label(frame, text=f"Empleado: {empleado}").pack(fill=tk.X, pady=5)
-        ttk.Label(frame, text=f"Cédula: {cedula}").pack(fill=tk.X, pady=5)
-        ttk.Label(frame, text=f"Fecha: {fecha}").pack(fill=tk.X, pady=5)
-        ttk.Label(frame, text=f"Estado actual: {estado}").pack(fill=tk.X, pady=5)
-        
         # Tipo de justificativo
-        ttk.Label(frame, text="Tipo de Justificativo:").pack(fill=tk.X, pady=5)
+        ttk.Label(main_frame, text="Tipo de Justificativo:").pack(fill=tk.X, pady=5)
         tipo_var = tk.StringVar(value="Médico")
-        tipos_justificativo = ["Médico", "Permiso", "Otros"]
-        tipo_combo = ttk.Combobox(frame, textvariable=tipo_var, 
-                                values=tipos_justificativo, state="readonly")
+        tipo_combo = ttk.Combobox(main_frame, textvariable=tipo_var,
+                            values=["Médico", "Permiso", "Otros"],
+                            state="readonly")
         tipo_combo.pack(fill=tk.X, pady=5)
+
+        # Frames para motivo y observación
+        motivo_frame = ttk.Frame(main_frame)
+        observacion_frame = ttk.Frame(main_frame)
         
-        # Motivo
-        ttk.Label(frame, text="Motivo:").pack(fill=tk.X, pady=5)
-        motivo_text = tk.Text(frame, height=4)
+        ttk.Label(motivo_frame, text="Motivo:").pack(fill=tk.X)
+        motivo_text = tk.Text(motivo_frame, height=4)
         motivo_text.pack(fill=tk.X, pady=5)
-        
-        # Observación
-        ttk.Label(frame, text="Observación:").pack(fill=tk.X, pady=5)
-        observacion_text = tk.Text(frame, height=4)
+
+        ttk.Label(observacion_frame, text="Observación:").pack(fill=tk.X)
+        observacion_text = tk.Text(observacion_frame, height=4)
         observacion_text.pack(fill=tk.X, pady=5)
-        
-        # Documento respaldo
-        ttk.Label(frame, text="N° de Documento de Respaldo:").pack(fill=tk.X, pady=5)
-        doc_entry = ttk.Entry(frame)
-        doc_entry.pack(fill=tk.X, pady=5)
+
+        # Frame para documento
+        doc_frame = ttk.LabelFrame(main_frame, text="Documento de Respaldo", padding="10")
+        doc_frame.pack(fill=tk.X, pady=15)
+
+        archivo_var = tk.StringVar()
+        ttk.Label(doc_frame, textvariable=archivo_var).pack(fill=tk.X, pady=5)
+
+        def seleccionar_archivo():
+            filetypes = [
+                ('Documentos PDF', '*.pdf'),
+                ('Imágenes', '*.png *.jpg *.jpeg')
+            ]
+            archivo = filedialog.askopenfilename(filetypes=filetypes)
+            if archivo:
+                archivo_var.set(archivo)
+                return archivo
+            return None
+
+        seleccionar_btn = tk.Button(
+            doc_frame,
+            text="Seleccionar Archivo",
+            font=("Arial", 10),
+            fg="#ffffff",
+            bg="#475569",
+            activebackground="#334155",
+            relief="flat",
+            cursor="hand2",
+            pady=5,
+            command=seleccionar_archivo
+        )
+        seleccionar_btn.pack(pady=5)
+
+        def on_tipo_change(*args):
+            tipo = tipo_var.get()
+            if tipo in ["Médico", "Permiso"]:
+                motivo_frame.pack_forget()
+                
+                observacion_frame.pack(fill=tk.X, pady=5)
+                observacion_text.configure(state='normal')
+                observacion_text.delete('1.0', tk.END)
+                observacion_text.insert('1.0', f"Justificado por documento {tipo.lower()}")
+                observacion_text.configure(state='disabled')
+                
+                for widget in doc_frame.winfo_children():
+                    if isinstance(widget, ttk.Label) and widget.cget("text") == "*Requerido":
+                        widget.destroy()
+                ttk.Label(doc_frame, text="*Requerido", foreground="red").pack(before=seleccionar_btn)
+            else:
+                motivo_frame.pack(fill=tk.X, pady=5, before=doc_frame)
+                observacion_frame.pack(fill=tk.X, pady=5, before=doc_frame)
+                observacion_text.configure(state='normal')
+                observacion_text.delete('1.0', tk.END)
+                
+                for widget in doc_frame.winfo_children():
+                    if isinstance(widget, ttk.Label) and widget.cget("text") == "*Requerido":
+                        widget.destroy()
+
+        tipo_var.trace('w', on_tipo_change)
+        on_tipo_change()
 
         def guardar_justificacion():
-            # Validar campos requeridos
-            motivo = motivo_text.get("1.0", tk.END).strip()
-            if not motivo:
-                messagebox.showwarning("Advertencia", "Por favor ingrese el motivo")
-                return
+            tipo = tipo_var.get()
+            if tipo in ["Médico", "Permiso"]:
+                if not archivo_var.get():
+                    messagebox.showwarning("Advertencia", "El documento es requerido para justificativos médicos/permisos")
+                    return
+            else:
+                if not motivo_text.get("1.0", tk.END).strip():
+                    messagebox.showwarning("Advertencia", "El motivo es requerido")
+                    return
 
             try:
-                # Obtener el ID del empleado
-                connection = self.db_manager.connect()
-                cursor = connection.cursor()
-                cursor.execute("SELECT id_empleado FROM empleados WHERE cedula_identidad = %s", (cedula,))
-                result = cursor.fetchone()
+                fecha_mysql = datetime.strptime(fecha, '%d-%m-%Y').strftime('%Y-%m-%d')
+                archivo_ruta = archivo_var.get()
                 
-                if not result:
-                    messagebox.showerror("Error", "No se encontró el empleado en la base de datos")
-                    return
+                if archivo_ruta:
+                    directorio = "justificantes"
+                    if not os.path.exists(directorio):
+                        os.makedirs(directorio)
                     
-                empleado_id = result[0]
-
-                # Preparar datos de la justificación
+                    extension = os.path.splitext(archivo_ruta)[1]
+                    nuevo_nombre = f"{cedula}_{fecha.replace('/','-')}_{tipo_var.get()}{extension}"
+                    destino = os.path.join(directorio, nuevo_nombre)
+                    shutil.copy2(archivo_ruta, destino)
+                
                 datos_justificativo = {
-                    'empleado_id': empleado_id,
-                    'fecha': fecha,
+                    'empleado_id': self.db_manager.obtener_empleado_por_cedula(cedula)[0],
+                    'fecha': fecha_mysql,
                     'tipo': tipo_var.get(),
-                    'motivo': motivo,
+                    'motivo': motivo_text.get("1.0", tk.END).strip() if tipo not in ["Médico", "Permiso"] else "",
                     'observacion': observacion_text.get("1.0", tk.END).strip(),
-                    'num_documento': doc_entry.get().strip(),
-                    'registrado_por': 'admin'  # Aquí deberías usar el usuario actual del sistema
+                    'num_documento': nuevo_nombre if archivo_ruta else None,
+                    'registrado_por': f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}"
                 }
 
-                # Registrar la justificación
                 self.db_manager.registrar_justificacion(datos_justificativo)
+                
+                detalle = (f"Justificación de inasistencia:\n"
+                        f"Empleado: {empleado}\n"
+                        f"Fecha: {fecha}\n"
+                        f"Tipo: {tipo_var.get()}\n"
+                        f"Motivo: {datos_justificativo['motivo']}\n"
+                        f"Documento adjunto: {nuevo_nombre if archivo_ruta else 'No adjuntado'}\n"
+                        f"Registrado por: {self.usuario_actual['nombre']} {self.usuario_actual['apellido']}")
+
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                    accion='Justificó inasistencia',
+                    tabla='justificativos',
+                    detalle=detalle)
                 messagebox.showinfo("Éxito", "Justificación registrada correctamente")
-                self.justificar_window.destroy()
-                self.cargar_asistencias()  # Recargar la lista de asistencias
+                dialog.destroy()
+                self.cargar_asistencias()
 
             except Exception as e:
                 messagebox.showerror("Error", f"Error al registrar justificación: {str(e)}")
-                print(f"Error detallado: {str(e)}")  # Para debugging
-            finally:
-                if 'connection' in locals() and connection.is_connected():
-                    cursor.close()
-                    connection.close()
 
         # Botones
-        button_frame = ttk.Frame(frame)
-        button_frame.pack(fill=tk.X, pady=10)
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=20)
         
-        ttk.Button(button_frame, text="Guardar",
-                command=guardar_justificacion).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cancelar",
-                command=self.justificar_window.destroy).pack(side=tk.LEFT, padx=5)
+        guardar_btn = tk.Button(
+        button_frame,
+        text="Guardar Justificación",
+        font=("Arial", 10, "bold"),
+        fg="#ffffff",
+        bg="#2596be",
+        activebackground="#1e7aa3",
+        activeforeground="#ffffff", 
+        relief="flat",
+        cursor="hand2",
+        width=20,
+        pady=8,
+        command=guardar_justificacion
+        )
+        guardar_btn.pack(side=tk.LEFT, padx=5)
+
+        cancelar_btn = tk.Button(
+        button_frame,
+        text="Cancelar",
+        font=("Arial", 10, "bold"),
+        fg="#ffffff",
+        bg="#6C757D",
+        activebackground="#5C636A",
+        relief="flat",
+        cursor="hand2",
+        width=20,
+        pady=8,
+        command=dialog.destroy
+        )
+        cancelar_btn.pack(side=tk.LEFT, padx=5)
+
+        # Centrar ventana
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f'{width}x{height}+{x}+{y}')
 
     def ver_detalles(self):
         """Muestra una ventana con los detalles completos del registro de asistencia seleccionado"""
@@ -487,52 +615,87 @@ class AsistenciasForm(ttk.Frame):
             messagebox.showwarning("Advertencia", "Por favor seleccione una asistencia")
             return
             
-        # Obtener datos del registro seleccionado
         item = self.tree.item(selected[0])
         valores = item['values']
         
-        # Crear ventana de detalles
         detalles_window = tk.Toplevel(self)
         detalles_window.title("Detalles de Asistencia")
-        detalles_window.geometry("500x400")
+        detalles_window.geometry("420x620")
+        detalles_window.configure(bg='white')
+        
+        # Crear estilos
+        style = ttk.Style()
+        style.configure('Title.TLabel', font=('Arial', 14, 'bold'))
+        style.configure('Subtitle.TLabel', font=('Arial', 12, 'bold'))
+        style.configure('Info.TLabel', font=('Arial', 10))
         
         # Frame principal
-        frame = ttk.Frame(detalles_window, padding="20")
+        frame = ttk.Frame(detalles_window, padding="20", style='Card.TFrame')
         frame.pack(fill=tk.BOTH, expand=True)
         
-        # Información detallada
+        # Título y separador
+        ttk.Label(frame, text="Información", style='Subtitle.TLabel').grid(
+            row=0, column=0, columnspan=2, sticky='w', pady=(0,10))
+        ttk.Separator(frame, orient='horizontal').grid(
+            row=1, column=0, columnspan=2, sticky='ew', pady=(0,10))
+
+        # Información principal
         info = {
-            "Fecha": valores[0],
             "Empleado": valores[1],
             "Cédula": valores[2],
-            "Hora de Entrada": valores[3] or "No registrada",
-            "Hora de Salida": valores[4] or "No registrada",
-            "Horas Trabajadas": valores[5] or "0.0",
-            "Estado": valores[6],
-            "Observación": valores[7]
+            "Fecha": valores[0],
+            "Estado actual": valores[6]
         }
-        
-        # Mostrar información
-        row = 0
+
+        row = 2
         for label, value in info.items():
             ttk.Label(frame, text=f"{label}:", font=('Arial', 10, 'bold')).grid(
-                row=row, column=0, sticky='w', pady=5)
+                row=row, column=0, sticky='e', pady=5)
             ttk.Label(frame, text=str(value), wraplength=300).grid(
                 row=row, column=1, sticky='w', pady=5, padx=10)
             row += 1
+
+        # Separador después de información principal
+        ttk.Separator(frame, orient='horizontal').grid(
+            row=row, column=0, columnspan=2, sticky='ew', pady=10)
+        row += 1
+
+        # Sección de Detalles del Registro
+        ttk.Label(frame, text="Detalles del Registro", style='Subtitle.TLabel').grid(
+            row=row, column=0, columnspan=2, sticky='w', pady=(0,10))
+        row += 1
+
+        detalles = {
+            "Hora de Entrada": valores[3] or "No registrada",
+            "Hora de Salida": valores[4] or "No registrada",
+            "Horas Trabajadas": valores[5] or "0.0",
+            "Observación": valores[7]
+        }
+
+        for label, value in detalles.items():
+            ttk.Label(frame, text=f"{label}:", font=('Arial', 10, 'bold')).grid(
+                row=row, column=0, sticky='e', pady=5)
+            ttk.Label(frame, text=str(value), wraplength=300).grid(
+                row=row, column=1, sticky='w', pady=5, padx=10)
+            row += 1
+
+        # Separador después de detalles
+        ttk.Separator(frame, orient='horizontal').grid(
+            row=row, column=0, columnspan=2, sticky='ew', pady=10)
+        row += 1
             
         # Si hay justificación, mostrar detalles adicionales
         if valores[6] == 'Justificada':
-            # Obtener detalles de la justificación desde la base de datos
             try:
-                justificacion = self.db_manager.obtener_justificacion(
-                    valores[2],  # cédula
-                    valores[0]   # fecha
-                )
+                fecha_obj = datetime.strptime(valores[0], '%d-%m-%Y')
+                fecha_mysql = fecha_obj.strftime('%Y-%m-%d')
+                
+                justificacion = self.db_manager.obtener_justificacion(valores[2], fecha_mysql)
+                
                 if justificacion:
-                    ttk.Label(frame, text="\nDetalles de Justificación:", 
-                             font=('Arial', 11, 'bold')).grid(
-                        row=row, column=0, columnspan=2, sticky='w', pady=10)
+                    ttk.Label(frame, text="Detalles de Justificación", 
+                            style='Subtitle.TLabel').grid(
+                        row=row, column=0, columnspan=2, sticky='w', pady=(0,10))
                     row += 1
                     
                     detalles_just = {
@@ -540,22 +703,43 @@ class AsistenciasForm(ttk.Frame):
                         "Motivo": justificacion[1],
                         "Documento": justificacion[2] or "No especificado",
                         "Registrado por": justificacion[3],
-                        "Fecha de registro": justificacion[4].strftime('%Y-%m-%d %H:%M:%S')
+                        "Fecha de registro": justificacion[4].strftime('%d-%m-%Y %H:%M:%S')
                     }
                     
                     for label, value in detalles_just.items():
                         ttk.Label(frame, text=f"{label}:", 
                                 font=('Arial', 10, 'bold')).grid(
-                            row=row, column=0, sticky='w', pady=5)
-                        ttk.Label(frame, text=str(value), 
+                            row=row, column=0, sticky='e', pady=5)
+                        ttk.Label(frame, text=str(value),
                                 wraplength=300).grid(
                             row=row, column=1, sticky='w', pady=5, padx=10)
                         row += 1
                         
             except Exception as e:
                 print(f"Error al obtener detalles de justificación: {e}")
-        
-        # Botón para cerrar
-        ttk.Button(frame, text="Cerrar", 
-                  command=detalles_window.destroy).grid(
-            row=row, column=0, columnspan=2, pady=20)
+
+        # Botón Cerrar
+        close_btn = tk.Button(
+            frame,
+            text="Cerrar",
+            font=('Arial', 10, "bold"),
+            fg='white',
+            bg='#6C757D',
+            activebackground='#5C636A',
+            relief='flat',
+            cursor='hand2',
+            command=detalles_window.destroy
+        )
+        close_btn.grid(row=row, column=0, columnspan=2, pady=20)
+
+        # Configurar padding consistente
+        for widget in frame.winfo_children():
+            widget.grid_configure(padx=15)
+
+        # Centrar ventana
+        detalles_window.update_idletasks()
+        width = detalles_window.winfo_width()
+        height = detalles_window.winfo_height()
+        x = (detalles_window.winfo_screenwidth() // 2) - (width // 2)
+        y = (detalles_window.winfo_screenheight() // 2) - (height // 2)
+        detalles_window.geometry(f'{width}x{height}+{x}+{y}')

@@ -1,13 +1,29 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
+from util.ayuda import Ayuda
 
 class NfcForm(ttk.Frame):
-    def __init__(self, parent, db_manager):
+    def __init__(self, parent, db_manager, usuario_actual):
         super().__init__(parent)
         self.db_manager = db_manager
+        self.sistema_ayuda = Ayuda()
+        self.usuario_actual = usuario_actual
+
+        self.bind_all('<F1>', self.mostrar_ayuda)
 
         self.pack(fill=tk.BOTH, expand=True)
+
+        # Verificar permisos
+        alcance = self.db_manager.verificar_permiso(
+            usuario_actual['id_usuario'], 
+            'empleados.nfc'
+        )
+
+        if not alcance or alcance != 'GLOBAL':
+            messagebox.showerror("Error", "No tienes los permisos suficientes para ingresar a este módulo.")
+            self.destroy()
+            return
         
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
@@ -89,6 +105,10 @@ class NfcForm(ttk.Frame):
         
         # Cargar datos iniciales
         self.cargar_tarjetas()
+
+    def mostrar_ayuda(self, event=None):
+        """Muestra la ayuda contextual del módulo de empleados"""
+        self.sistema_ayuda.mostrar_ayuda('nfc')
     
     def registrar_tarjeta(self):
         """Registrar nueva tarjeta NFC"""
@@ -105,6 +125,13 @@ class NfcForm(ttk.Frame):
             
         try:
             self.db_manager.registrar_tarjeta_nfc(uid)
+            self.db_manager.registrar_auditoria(
+                usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                rol=f"{self.usuario_actual['rol']}",
+                accion='Registró tarjeta',
+                tabla='nfc_dispositivos',
+                detalle=f"Registro de nueva tarjeta NFC con UID: {uid}")
+            
             messagebox.showinfo("Éxito", "Tarjeta registrada correctamente")
             self.uid_entry.delete(0, tk.END)
             self.cargar_tarjetas()
@@ -126,7 +153,7 @@ class NfcForm(ttk.Frame):
                 tarjeta['uid'],
                 tarjeta['tipo'],
                 tarjeta['estado'],
-                tarjeta['fecha_registro'].strftime('%Y-%m-%d %H:%M'),
+                tarjeta['fecha_registro'].strftime('%d-%m-%Y %H:%M'),
                 tarjeta['empleado'] if tarjeta['empleado'] else 'No asignado'
             ]
             self.tree.insert('', 'end', values=valores, tags=(tarjeta['estado'],))
@@ -140,10 +167,18 @@ class NfcForm(ttk.Frame):
         
         item = self.tree.item(selected[0])
         id_dispositivo = item['values'][0]
+        uid = item['values'][1]
         
         if messagebox.askyesno("Confirmar", "¿Está seguro de marcar esta tarjeta como disponible?"):
             try:
                 self.db_manager.marcar_tarjeta_disponible(id_dispositivo)
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                    rol=f"{self.usuario_actual['rol']}",
+                    accion='Actualizó tarjeta',
+                    tabla='nfc_dispositivos',
+                    detalle=f"Tarjeta NFC marcada como disponible\nUID: {uid}\nID: {id_dispositivo}")
+                
                 messagebox.showinfo("Éxito", "Tarjeta marcada como disponible")
                 self.cargar_tarjetas()
             except Exception as e:
@@ -158,6 +193,7 @@ class NfcForm(ttk.Frame):
         
         item = self.tree.item(selected[0])
         id_dispositivo = item['values'][0]
+        uid = item['values'][1]
         estado = item['values'][3]
         
         if estado == 'asignado':
@@ -167,6 +203,13 @@ class NfcForm(ttk.Frame):
         if messagebox.askyesno("Confirmar", "¿Está seguro de eliminar esta tarjeta?"):
             try:
                 self.db_manager.eliminar_tarjeta(id_dispositivo)
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                    rol=f"{self.usuario_actual['rol']}",
+                    accion='Eliminó',
+                    tabla='nfc_dispositivos',
+                    detalle=f"Eliminación de tarjeta NFC\nUID: {uid}\nID: {id_dispositivo}")
+                
                 messagebox.showinfo("Éxito", "Tarjeta eliminada correctamente")
                 self.cargar_tarjetas()
             except Exception as e:

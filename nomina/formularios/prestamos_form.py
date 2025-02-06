@@ -3,55 +3,104 @@ from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
 from datetime import datetime
 from decimal import Decimal
+from util.ayuda import Ayuda
 
 class PrestamoNuevoForm(tk.Toplevel):
-    """Formulario para solicitar un nuevo préstamo"""
     def __init__(self, parent, db_manager, id_empleado):
         super().__init__(parent)
+        self.parent = parent
         self.db_manager = db_manager
         self.id_empleado = id_empleado
         
-        # Configuración básica
         self.title("Solicitar Préstamo")
-        self.geometry("500x600")
-        
-        # Frame principal
-        main_frame = ttk.Frame(self, padding="10")
+        self.geometry("360x520")
+        self.configure(bg='white')
+
+        main_frame = ttk.Frame(self, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Campos del formulario
-        ttk.Label(main_frame, text="Monto solicitado:").pack(pady=5)
-        self.monto_entry = ttk.Entry(main_frame)
+
+        # Título y subtítulo
+        ttk.Label(main_frame, 
+                 text="Solicitar Préstamo",
+                 font=('Arial', 16, 'bold'),
+                 foreground='#2596be').pack(anchor='center')
+
+        ttk.Label(main_frame,
+                 text="Complete los datos para solicitar su préstamo",
+                 font=('Arial', 10),
+                 foreground='#666666').pack(pady=(5,15))
+
+        # Frame para datos del préstamo
+        campos_frame = ttk.LabelFrame(main_frame, text="Datos del Préstamo", padding=10)
+        campos_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(campos_frame, text="Monto solicitado:").pack(pady=5)
+        self.monto_entry = ttk.Entry(campos_frame, width=50)
         self.monto_entry.pack(pady=5)
-        
-        ttk.Label(main_frame, text="Número de cuotas:").pack(pady=5)
-        self.cuotas_entry = ttk.Entry(main_frame)
+
+        ttk.Label(campos_frame, text="Número de cuotas:").pack(pady=5)
+        self.cuotas_entry = ttk.Entry(campos_frame, width=50)
         self.cuotas_entry.pack(pady=5)
+
+        self.cuota_label = ttk.Label(campos_frame, text="Cuota quincenal: Bs. 0,00")
+        self.cuota_label.pack(pady=10)
+
+        # Frame para motivo
+        motivo_frame = ttk.LabelFrame(main_frame, text="Motivo del Préstamo", padding=10)
+        motivo_frame.pack(fill=tk.X, pady=5)
         
-        # Frame para mostrar cálculo de cuota
-        self.calculo_frame = ttk.Frame(main_frame)
-        self.calculo_frame.pack(pady=10)
-        self.cuota_label = ttk.Label(self.calculo_frame, text="Cuota quincenal: Bs. 0,00")
-        self.cuota_label.pack()
-        
-        ttk.Label(main_frame, text="Motivo del préstamo:").pack(pady=5)
-        self.motivo_text = tk.Text(main_frame, height=4)
-        self.motivo_text.pack(pady=5, fill=tk.X)
-        
+        self.motivo_text = tk.Text(motivo_frame, height=4, width=40)
+        self.motivo_text.pack(pady=5)
+
         # Botones
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(pady=20)
-        
-        ttk.Button(button_frame, text="Calcular Cuota",
-                  command=self.calcular_cuota).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Solicitar",
-                  command=self.solicitar_prestamo).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cancelar",
-                  command=self.destroy).pack(side=tk.LEFT, padx=5)
-        
-        # Bindings
+
+        self.solicitar_btn = tk.Button(
+            button_frame,
+            text="Solicitar",
+            font=("Arial", 10, "bold"),
+            fg="#ffffff",
+            bg="#0D6EFD",
+            activebackground="#0B5ED7",
+            relief="flat",
+            cursor="hand2",
+            width=15,
+            command=self.solicitar_prestamo
+        )
+        self.solicitar_btn.pack(side=tk.LEFT, padx=5)
+
+        self.cancelar_btn = tk.Button(
+            button_frame,
+            text="Cancelar", 
+            font=("Arial", 10, "bold"),
+            fg="#ffffff",
+            bg="#6C757D",
+            activebackground="#5C636A",
+            relief="flat",
+            cursor="hand2",
+            width=15,
+            command=self.destroy
+        )
+        self.cancelar_btn.pack(side=tk.LEFT, padx=5)
+
+        # Eventos hover
+        self.solicitar_btn.bind("<Enter>", lambda e: e.widget.config(bg="#0B5ED7"))
+        self.solicitar_btn.bind("<Leave>", lambda e: e.widget.config(bg="#0D6EFD"))
+        self.cancelar_btn.bind("<Enter>", lambda e: e.widget.config(bg="#5C636A"))
+        self.cancelar_btn.bind("<Leave>", lambda e: e.widget.config(bg="#6C757D"))
+
+        # Bindings para cálculo
         self.monto_entry.bind('<KeyRelease>', lambda e: self.calcular_cuota())
         self.cuotas_entry.bind('<KeyRelease>', lambda e: self.calcular_cuota())
+
+        # Centrar la ventana:
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.winfo_screenheight() // 2) - (height // 2) 
+        self.geometry(f'{width}x{height}+{x}+{y}')
     
     def calcular_cuota(self):
         """Calcular cuota quincenal"""
@@ -96,6 +145,19 @@ class PrestamoNuevoForm(tk.Toplevel):
             }
             
             self.db_manager.registrar_prestamo(datos_prestamo)
+            # Registro de auditoria
+            detalle = (f"Nueva solicitud de préstamo registrada:\n"
+                    f"Empleado: {self.parent.usuario_actual['nombre']} {self.parent.usuario_actual['apellido']}\n"
+                    f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"Acción realizada desde la interfaz.")
+            
+            self.db_manager.registrar_auditoria(
+                usuario=f"{self.parent.usuario_actual['nombre']} {self.parent.usuario_actual['apellido']}",
+                rol=f"{self.usuario_actual['rol']}",
+                accion='Nueva solicitud',
+                tabla='prestamos',
+                detalle=detalle)
+            
             messagebox.showinfo("Éxito", "Solicitud enviada correctamente")
             self.destroy()
             
@@ -107,47 +169,64 @@ class PrestamosForm(ttk.Frame):
         super().__init__(parent)
         self.db_manager = db_manager
         self.usuario_actual = usuario_actual
+        self.sistema_ayuda = Ayuda()
+
+        self.bind_all("<F1>", self.mostrar_ayuda)
         
         self.pack(fill=tk.BOTH, expand=True)
-        
+
         # Frame principal
         self.main_frame = ttk.Frame(self, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Titulo
-        ttk.Label(self.main_frame, text="Prestamos", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
+        ttk.Label(self.main_frame, text="Préstamos", font=('Helvetica', 12, 'bold')).pack(anchor='w', pady=(0,5))
         
         # Frame superior
         self.top_frame = ttk.Frame(self.main_frame)
         self.top_frame.pack(fill=tk.X, pady=5)
         
-        # Si es empleado regular, mostrar botón de nueva solicitud y título
-        if self.usuario_actual['rol'] == 'empleado':
-            titulo = ttk.Label(self.top_frame, 
-                             text="Mis Préstamos",
-                             font=('Helvetica', 12, 'bold'))
-            titulo.pack(side=tk.LEFT, padx=5)
-            
-            ttk.Button(self.top_frame, text="Nueva Solicitud",
-                      command=self.nueva_solicitud).pack(side=tk.RIGHT, padx=5)
-        else:
-            # Filtros para administradores/gerentes
+        # Verificar si tiene acceso global al módulo de préstamos
+        alcance = self.db_manager.verificar_permiso(
+            self.usuario_actual['id_usuario'], 
+            'prestamos.gestion')
+        
+        if not alcance:
+            messagebox.showerror("Error", "No tienes los permisos suficientes para esta opción.")
+            self.destroy()
+            return
+
+        self.tiene_acceso_global = alcance == 'GLOBAL'
+        self.tiene_acceso_personal = True 
+
+        # La interfaz depende del tipo de acceso
+        if self.tiene_acceso_global:
+            # Mostrar filtros y controles completos
             ttk.Label(self.top_frame, text="Estado:").pack(side=tk.LEFT, padx=5)
             self.estado_var = tk.StringVar()
             estados = ['Todos', 'Pendiente', 'Aprobado', 'Rechazado', 'Activo', 'Liquidado']
-            self.estado_combo = ttk.Combobox(self.top_frame, 
-                                           textvariable=self.estado_var,
-                                           values=estados,
-                                           state="readonly")
+            self.estado_combo = ttk.Combobox(self.top_frame,
+                                         textvariable=self.estado_var,
+                                         values=estados,
+                                         state="readonly")
             self.estado_combo.pack(side=tk.LEFT, padx=5)
             self.estado_combo.set('Todos')
             
-            # Búsqueda
             ttk.Label(self.top_frame, text="Buscar:").pack(side=tk.LEFT, padx=5)
             self.search_var = tk.StringVar()
             self.search_entry = ttk.Entry(self.top_frame, textvariable=self.search_var)
             self.search_entry.pack(side=tk.LEFT, padx=5)
-        
+        else:
+            # Vista limitada - solo sus préstamos
+            titulo = ttk.Label(self.top_frame,
+                             text="Mis Préstamos",
+                             font=('Helvetica', 12, 'bold'))
+            titulo.pack(side=tk.LEFT, padx=5)
+
+        # Botón de Nueva Solicitud
+        ttk.Button(self.top_frame, text="Nueva Solicitud",
+                  command=self.nueva_solicitud).pack(side=tk.RIGHT, padx=5)
+
         # Frame para el Treeview
         self.tree_frame = ttk.Frame(self.main_frame)
         self.tree_frame.pack(fill=tk.BOTH, expand=True, pady=5)
@@ -192,17 +271,17 @@ class PrestamosForm(ttk.Frame):
         self.button_frame = ttk.Frame(self.main_frame)
         self.button_frame.pack(fill=tk.X, pady=10)
         
-        # Botones según rol
-        if self.usuario_actual['rol'] != 'empleado':
+        # Botones según rol y permisos
+        if self.tiene_acceso_global:  # Cambiado de verificar_permiso a tiene_acceso_global
             ttk.Button(self.button_frame, text="Aprobar",
-                      command=self.aprobar_prestamo).pack(side=tk.LEFT, padx=5)
+                    command=self.aprobar_prestamo).pack(side=tk.LEFT, padx=5)
             ttk.Button(self.button_frame, text="Rechazar",
-                      command=self.rechazar_prestamo).pack(side=tk.LEFT, padx=5)
-        
+                    command=self.rechazar_prestamo).pack(side=tk.LEFT, padx=5)
+
         ttk.Button(self.button_frame, text="Ver Detalles",
-                  command=self.ver_detalles).pack(side=tk.LEFT, padx=5)
+                command=self.ver_detalles).pack(side=tk.LEFT, padx=5)
         ttk.Button(self.button_frame, text="Actualizar",
-                  command=self.cargar_prestamos).pack(side=tk.LEFT, padx=5)
+                command=self.cargar_prestamos).pack(side=tk.LEFT, padx=5)
         
         # Configurar tags para colores según estado
         self.tree.tag_configure('pendiente', background='#fff3cd')
@@ -211,61 +290,86 @@ class PrestamosForm(ttk.Frame):
         self.tree.tag_configure('activo', background='#cfe2ff')
         self.tree.tag_configure('liquidado', background='#e2e3e5')
         
-        # Bindings
+        # Configurar bindings para filtros
         if hasattr(self, 'estado_combo'):
             self.estado_combo.bind('<<ComboboxSelected>>', lambda e: self.cargar_prestamos())
         if hasattr(self, 'search_var'):
-            self.search_var.trace('w', lambda *args: self.cargar_prestamos())
-            
+            self.search_var.trace_add('write', lambda *args: self.cargar_prestamos())
+
         # Cargar datos iniciales
         self.cargar_prestamos()
+
+    def mostrar_ayuda(self, event=None):
+        """Muestra la ayuda contextual del módulo de empleados"""
+        self.sistema_ayuda.mostrar_ayuda('prestamos')
     
     def nueva_solicitud(self):
         """Abrir formulario de nueva solicitud"""
-        PrestamoNuevoForm(self, self.db_manager, self.usuario_actual['id_empleado'])
+        try:
+            puede_solicitar, mensaje = self.db_manager.puede_solicitar_prestamo(
+                self.usuario_actual['id_empleado']
+            )
+            
+            if not puede_solicitar:
+                messagebox.showerror("Error", mensaje)
+                return
+
+            dialog = PrestamoNuevoForm(self, self.db_manager, self.usuario_actual['id_empleado'])
+            self.wait_window(dialog)
+            self.cargar_prestamos()
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al procesar la solicitud: {str(e)}")
     
     def cargar_prestamos(self):
-        """Cargar lista de préstamos según filtros y rol"""
+        """Cargar la lista de préstamos según los permisos del usuario"""
         # Limpiar Treeview
         for item in self.tree.get_children():
             self.tree.delete(item)
-        
-        try:
-            if self.usuario_actual['rol'] == 'empleado':
-                # Para empleados, mostrar solo sus préstamos
-                prestamos = self.db_manager.obtener_prestamos_empleado(
-                    self.usuario_actual['id_empleado'])
-            else:
-                # Para administradores/gerentes, obtener estado y búsqueda
-                estado = getattr(self, 'estado_var', tk.StringVar()).get()
-                busqueda = getattr(self, 'search_var', tk.StringVar()).get().lower()
-                prestamos = self.db_manager.obtener_todos_prestamos()
-                
-                # Aplicar filtros para admin/gerentes
-                if estado != 'Todos':
-                    prestamos = [p for p in prestamos 
-                            if p['estado'].lower() == estado.lower()]
-                if busqueda:
-                    prestamos = [p for p in prestamos 
-                            if any(str(v).lower().find(busqueda) >= 0 
-                            for v in p.values())]
             
-            # Insertar préstamos filtrados en el Treeview
+        try:
+            # Obtener estado seleccionado y texto de búsqueda
+            estado_filtro = self.estado_var.get() if hasattr(self, 'estado_var') else None
+            texto_busqueda = self.search_var.get().lower() if hasattr(self, 'search_var') else None
+            
+            # Cargar préstamos según el tipo de acceso
+            if self.tiene_acceso_global:
+                prestamos = self.db_manager.obtener_todos_prestamos()
+            else:
+                prestamos = self.db_manager.obtener_prestamos_empleado(self.usuario_actual['id_empleado'])
+                
+            # Aplicar filtros si existen
             for prestamo in prestamos:
+                # Filtrar por estado
+                if estado_filtro and estado_filtro != 'Todos':
+                    if prestamo['estado'].lower() != estado_filtro.lower():
+                        continue
+                        
+                # Filtrar por texto de búsqueda
+                if texto_busqueda:
+                    texto_encontrado = False
+                    # Buscar en todos los campos del préstamo
+                    for valor in prestamo.values():
+                        if str(valor).lower().find(texto_busqueda) >= 0:
+                            texto_encontrado = True
+                            break
+                    if not texto_encontrado:
+                        continue
+                
+                # Insertar préstamo en el Treeview
                 valores = [
                     prestamo['id_prestamo'],
                     prestamo['empleado'],
                     f"{float(prestamo['monto_total']):,.2f}",
                     f"{prestamo['cuotas_pagadas']}/{prestamo['cuotas_totales']}",
                     f"{float(prestamo['monto_cuota']):,.2f}",
-                    prestamo['fecha_solicitud'].strftime('%Y-%m-%d'),
+                    prestamo['fecha_solicitud'].strftime('%d-%m-%Y'),
                     prestamo['estado'],
                     f"{float(prestamo['saldo_restante']):,.2f}"
                 ]
                 
                 self.tree.insert('', 'end', values=valores,
-                            tags=(prestamo['estado'].lower(),))
-                            
+                                tags=(prestamo['estado'].lower(),))
+                                    
         except Exception as e:
             messagebox.showerror("Error", f"Error al cargar préstamos: {str(e)}")
     
@@ -275,9 +379,9 @@ class PrestamosForm(ttk.Frame):
         if not selected:
             messagebox.showwarning("Advertencia", "Por favor seleccione un préstamo")
             return
-        
+
         prestamo = self.tree.item(selected[0])['values']
-        if prestamo[6].lower() != 'pendiente':  # Convertir a minúsculas para comparar
+        if prestamo[6].lower() != 'pendiente': 
             messagebox.showwarning("Advertencia", 
                                 "Solo se pueden aprobar préstamos pendientes")
             return
@@ -286,11 +390,23 @@ class PrestamosForm(ttk.Frame):
             try:
                 nombre_completo = f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}"
                 self.db_manager.aprobar_prestamo(
-                    prestamo[0],  # id_prestamo
-                    nombre_completo
-                )
+                    prestamo[0],
+                    nombre_completo)
+                # Registrar auditoria
+                detalle = (f"Préstamo aprobado:\n"
+                        f"ID Préstamo: {prestamo[0]}\n"
+                        f"Aprobado por: {self.usuario_actual}\n"
+                        f"Empleado: {prestamo[1]}\n"
+                        f"Monto: {prestamo[2]}")
+
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                    rol=f"{self.usuario_actual['rol']}",
+                    accion='Aprobó Préstamo',
+                    tabla='prestamos',
+                    detalle=detalle)
                 messagebox.showinfo("Éxito", "Préstamo aprobado correctamente")
-                self.cargar_prestamos()
+                self.cargar_prestamos()  # Recargar después de aprobar
             except Exception as e:
                 messagebox.showerror("Error", f"Error al aprobar préstamo: {str(e)}")
     
@@ -299,6 +415,13 @@ class PrestamosForm(ttk.Frame):
         selected = self.tree.selection()
         if not selected:
             messagebox.showwarning("Advertencia", "Por favor seleccione un préstamo")
+            return
+        
+        if not self.db_manager.verificar_permiso(
+            self.usuario_actual['id_usuario'], 
+            'prestamos.aprobar'
+        ):
+            messagebox.showerror("Error", "No tiene permisos para rechazar préstamos")
             return
         
         prestamo = self.tree.item(selected[0])['values']
@@ -324,19 +447,31 @@ class PrestamosForm(ttk.Frame):
                 return
                 
             try:
-                # Usando el nombre completo del usuario actual
                 nombre_completo = f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}"
                 self.db_manager.rechazar_prestamo(
-                    prestamo[0],  # id_prestamo
-                    nombre_completo,  # Nombre completo en lugar de usuario
-                    motivo
+                    prestamo[0],
+                    nombre_completo,
+                    motivo)
+                # Registrar auditoriaç
+                detalle = (f"Préstamo rechazado:\n"
+                        f"ID Préstamo: {prestamo[0]}\n"  
+                        f"Rechazado por: {self.usuario_actual['nombre']} {self.usuario_actual['apellido']}\n"
+                        f"Empleado: {prestamo[1]}\n"
+                        f"Monto solicitado: {prestamo[2]}\n"
+                        f"Motivo: {motivo}")
+
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                    rol=f"{self.usuario_actual['rol']}",
+                    accion='Rechazó préstamo',
+                    tabla='prestamos',
+                    detalle=detalle
                 )
                 messagebox.showinfo("Éxito", "Préstamo rechazado correctamente")
                 dialog.destroy()
-                self.cargar_prestamos()
+                self.cargar_prestamos()  # Recargar después de rechazar
             except Exception as e:
-                messagebox.showerror("Error", 
-                                f"Error al rechazar préstamo: {str(e)}")
+                messagebox.showerror("Error", f"Error al rechazar préstamo: {str(e)}")
         
         ttk.Button(dialog, text="Confirmar",
                 command=confirmar_rechazo).pack(pady=10)
@@ -384,8 +519,8 @@ class PrestamoDetallesForm(tk.Toplevel):
             ("Saldo Pendiente:", "saldo_restante"),
             ("Estado:", "estado"),
             ("Fecha Solicitud:", "fecha_solicitud"),
-            ("Fecha Aprobación:", "fecha_aprobacion"),
-            ("Aprobado Por:", "aprobado_por")
+            ("Fecha de Respuesta:", "fecha_aprobacion"),
+            ("Atendido Por:", "aprobado_por")
         ]
         
         for i, (label, key) in enumerate(campos):
@@ -461,8 +596,8 @@ class PrestamoDetallesForm(tk.Toplevel):
                 'monto_cuota': f"Bs. {float(prestamo.get('monto_cuota', 0)):,.2f}",
                 'saldo_restante': f"Bs. {float(prestamo.get('saldo_restante', 0)):,.2f}",
                 'estado': prestamo.get('estado', '').capitalize(),
-                'fecha_solicitud': prestamo.get('fecha_solicitud', '-'),
-                'fecha_aprobacion': prestamo.get('fecha_aprobacion', '-'),
+                'fecha_solicitud': datetime.strptime(str(prestamo.get('fecha_solicitud', '-')), '%Y-%m-%d').strftime('%d-%m-%Y') if prestamo.get('fecha_solicitud') != '-' else '-',
+                'fecha_aprobacion': datetime.strptime(str(prestamo.get('fecha_aprobacion', '-')), '%Y-%m-%d').strftime('%d-%m-%Y') if prestamo.get('fecha_aprobacion') != '-' else '-',
                 'aprobado_por': prestamo.get('aprobado_por', '-')
             }
 
@@ -490,7 +625,7 @@ class PrestamoDetallesForm(tk.Toplevel):
         pagos = self.db_manager.obtener_pagos_prestamo(self.prestamo_id)
         for pago in pagos:
             valores = [
-                pago['fecha'],  # La fecha ya viene formateada desde la consulta SQL
+                pago['fecha'],
                 f"Bs. {float(pago['monto']):,.2f}",
                 pago['periodo'],
                 f"Bs. {float(pago['saldo']):,.2f}"
@@ -517,7 +652,7 @@ class PrestamoDetallesForm(tk.Toplevel):
         monto_entry.insert(0, str(prestamo['monto_cuota']))
         
         ttk.Label(dialog, text="Fecha:").pack(pady=5)
-        fecha_entry = DateEntry(dialog)
+        fecha_entry = DateEntry(dialog, date_pattern='dd-mm-yyyy')
         fecha_entry.pack(pady=5)
         
         ttk.Label(dialog, text="Período:").pack(pady=5)

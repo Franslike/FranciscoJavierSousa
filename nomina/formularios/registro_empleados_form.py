@@ -10,39 +10,21 @@ class RegistroEmpleadoForm(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.db_manager = db_manager
-        
+
         self.title("Registro de Empleado")
-        self.geometry("800x700")
+        self.geometry("720x700")
         
         # Diccionario para salarios base por cargo
         self.SALARIOS_BASE = {
             "Gerente": 18000.00,
-            "Supervisor": 15000.00,
             "Analista": 15000.00,
             "Empleado": 12000.00
         }
         
-        # Frame principal con scroll
+        # Frame principal
         self.main_frame = ttk.Frame(self)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Canvas y scrollbar
-        self.canvas = tk.Canvas(self.main_frame)
-        self.scrollbar = ttk.Scrollbar(self.main_frame, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas)
-        
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-        
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        
-        # Empaquetar canvas y scrollbar
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-        
+
         # Inicializar variables
         self.estado_var = tk.StringVar()
         self.municipio_var = tk.StringVar()
@@ -71,9 +53,17 @@ class RegistroEmpleadoForm(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
 
+    def crear_etiqueta_obligatoria(self, parent, texto, **kwargs):
+        frame = ttk.Frame(parent)
+        label = ttk.Label(frame, text=texto, **kwargs)
+        asterisco = ttk.Label(frame, text="*", foreground="#ff0000")
+        label.pack(side=tk.LEFT)
+        asterisco.pack(side=tk.LEFT)
+        return frame
+
     def crear_formulario(self):
         # Frame contenedor para primera fila (datos personales y dirección)
-        top_container = ttk.Frame(self.scrollable_frame)
+        top_container = ttk.Frame(self.main_frame)
         top_container.pack(fill=tk.X, padx=5, pady=5)
         
         # Frame para datos personales
@@ -81,16 +71,16 @@ class RegistroEmpleadoForm(tk.Toplevel):
         datos_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0,5))
         
         # Campos de datos personales
-        ttk.Label(datos_frame, text="Nombre:", width=15).grid(row=0, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(datos_frame, "Nombre:", width=15).grid(row=0, column=0, sticky='e', padx=5, pady=5)
         self.nombre_entry = ttk.Entry(datos_frame, width=25)
         self.nombre_entry.grid(row=0, column=1, sticky='w', padx=5, pady=5)
         
-        ttk.Label(datos_frame, text="Apellido:", width=15).grid(row=1, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(datos_frame, "Apellido:", width=15).grid(row=1, column=0, sticky='e', padx=5, pady=5)
         self.apellido_entry = ttk.Entry(datos_frame, width=25)
         self.apellido_entry.grid(row=1, column=1, sticky='w', padx=5, pady=5)
         
         # Cédula con selector de nacionalidad
-        ttk.Label(datos_frame, text="Cédula:", width=15).grid(row=2, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(datos_frame, "Cédula:", width=15).grid(row=2, column=0, sticky='e', padx=5, pady=5)
         cedula_frame = ttk.Frame(datos_frame)
         cedula_frame.grid(row=2, column=1, sticky='w', padx=5, pady=5)
         
@@ -104,7 +94,7 @@ class RegistroEmpleadoForm(tk.Toplevel):
         self.cedula_entry.pack(side=tk.LEFT)
         
         # Teléfono con selector de prefijo
-        ttk.Label(datos_frame, text="Teléfono:", width=15).grid(row=3, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(datos_frame, "Teléfono:", width=15).grid(row=3, column=0, sticky='e', padx=5, pady=5)
         telefono_frame = ttk.Frame(datos_frame)
         telefono_frame.grid(row=3, column=1, sticky='w', padx=5, pady=5)
         
@@ -119,11 +109,11 @@ class RegistroEmpleadoForm(tk.Toplevel):
         self.telefono_entry.bind('<KeyRelease>', self.limit_phone)
         
         # Fecha de nacimiento
-        ttk.Label(datos_frame, text="Fecha Nac.:", width=15).grid(row=4, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(datos_frame, "Fecha Nac.:", width=15).grid(row=4, column=0, sticky='e', padx=5, pady=5)
         self.fecha_nacimiento = DateEntry(
             datos_frame, 
             width=12,
-            date_pattern='dd/mm/yyyy',  # Forzar formato de 4 dígitos
+            date_pattern='dd/mm/yyyy',
             year_range=range(1950, datetime.now().year + 1),  # Rango razonable de años
             showweeknumbers=False,
             background='darkblue',
@@ -137,30 +127,30 @@ class RegistroEmpleadoForm(tk.Toplevel):
         direccion_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5,0))
         
         # Estado
-        ttk.Label(direccion_frame, text="Estado:", width=12).grid(row=0, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(direccion_frame, "Estado:", width=12).grid(row=0, column=0, sticky='e', padx=5, pady=5)
         self.estado_combo = ttk.Combobox(direccion_frame, textvariable=self.estado_var,
                                        state="readonly", width=25)
         self.estado_combo.grid(row=0, column=1, sticky='w', padx=5, pady=5)
         
         # Municipio
-        ttk.Label(direccion_frame, text="Municipio:", width=12).grid(row=1, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(direccion_frame, "Municipio:", width=12).grid(row=1, column=0, sticky='e', padx=5, pady=5)
         self.municipio_combo = ttk.Combobox(direccion_frame, textvariable=self.municipio_var,
                                           state="readonly", width=25)
         self.municipio_combo.grid(row=1, column=1, sticky='w', padx=5, pady=5)
         
         # Parroquia
-        ttk.Label(direccion_frame, text="Parroquia:", width=12).grid(row=2, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(direccion_frame, "Parroquia:", width=12).grid(row=2, column=0, sticky='e', padx=5, pady=5)
         self.parroquia_combo = ttk.Combobox(direccion_frame, textvariable=self.parroquia_var,
                                           state="readonly", width=25)
         self.parroquia_combo.grid(row=2, column=1, sticky='w', padx=5, pady=5)
         
         # Calle/Avenida
-        ttk.Label(direccion_frame, text="Calle/Av.:", width=12).grid(row=3, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(direccion_frame, "Calle/Av.:", width=12).grid(row=3, column=0, sticky='e', padx=5, pady=5)
         self.calle_entry = ttk.Entry(direccion_frame, width=28)
         self.calle_entry.grid(row=3, column=1, sticky='w', padx=5, pady=5)
         
         # Número/Casa
-        ttk.Label(direccion_frame, text="N°/Casa:", width=12).grid(row=4, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(direccion_frame, "N°/Casa:", width=12).grid(row=4, column=0, sticky='e', padx=5, pady=5)
         self.numero_entry = ttk.Entry(direccion_frame, width=28)
         self.numero_entry.grid(row=4, column=1, sticky='w', padx=5, pady=5)
         
@@ -170,54 +160,139 @@ class RegistroEmpleadoForm(tk.Toplevel):
         self.referencia_entry.grid(row=5, column=1, sticky='w', padx=5, pady=5)
 
         # Frame para datos laborales
-        laboral_frame = ttk.LabelFrame(self.scrollable_frame, text="Datos Laborales", padding=10)
+        laboral_frame = ttk.LabelFrame(self.main_frame, text="Datos Laborales", padding=10)
         laboral_frame.pack(fill=tk.X, padx=5, pady=5)
         
         # Grid para datos laborales
-        ttk.Label(laboral_frame, text="Cargo:", width=15).grid(row=0, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(laboral_frame, "Cargo:", width=15).grid(row=0, column=0, sticky='e', padx=5, pady=5)
         self.cargo_var = tk.StringVar()
         self.cargo_combo = ttk.Combobox(laboral_frame, textvariable=self.cargo_var,
                                     values=list(self.SALARIOS_BASE.keys()), state="readonly", width=25)
         self.cargo_combo.grid(row=0, column=1, sticky='w', padx=5, pady=5)
         
-        ttk.Label(laboral_frame, text="Salario:", width=15).grid(row=1, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(laboral_frame, "Salario:", width=15).grid(row=1, column=0, sticky='e', padx=5, pady=5)
         self.salario_entry = ttk.Entry(laboral_frame, width=28)
         self.salario_entry.grid(row=1, column=1, sticky='w', padx=5, pady=5)
         
-        ttk.Label(laboral_frame, text="Fecha Contratación:", width=15).grid(row=2, column=0, sticky='e', padx=5, pady=5)
-        self.fecha_contratacion = DateEntry(laboral_frame, width=20)
+        self.crear_etiqueta_obligatoria(laboral_frame, "Fecha Contrato:", width=15).grid(row=2, column=0, sticky='e', padx=5, pady=5)
+        self.fecha_contratacion = DateEntry(laboral_frame, width=20, date_pattern='dd/mm/yyyy')
         self.fecha_contratacion.grid(row=2, column=1, sticky='w', padx=5, pady=5)
         
         # Tarjeta NFC (ahora dentro de datos laborales)
-        ttk.Label(laboral_frame, text="Tarjeta NFC:", width=15).grid(row=3, column=0, sticky='e', padx=5, pady=5)
+        self.crear_etiqueta_obligatoria(laboral_frame, "Tarjeta NFC:", width=15).grid(row=3, column=0, sticky='e', padx=5, pady=5)
         self.uid_nfc_var = tk.StringVar()
         self.uid_nfc_combo = ttk.Combobox(laboral_frame, textvariable=self.uid_nfc_var,
                                         state="readonly", width=25)
         self.uid_nfc_combo.grid(row=3, column=1, sticky='w', padx=5, pady=5)
         
         # Frame para permisos
-        permisos_frame = ttk.LabelFrame(self.scrollable_frame, text="Permisos de Usuario", padding=10)
+        permisos_frame = ttk.LabelFrame(self.main_frame, text="Permisos de Usuario", padding=10)
         permisos_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        # Grid para permisos
+
+        # Canvas y scrollbar para la tabla
+        canvas = tk.Canvas(permisos_frame, height=150)
+        scrollbar = ttk.Scrollbar(permisos_frame, orient="vertical", command=canvas.yview)
+        tabla_frame = ttk.Frame(canvas)
+
+        # Configurar scroll
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.create_window((0, 0), window=tabla_frame, anchor="nw", width=650)
+
+        # Estructura de permisos actualizada
+        permisos_estructura = {
+            "EMPLEADOS": [
+                "empleados.gestion",
+                "empleados.nfc",
+                "empleados.usuarios"
+            ],
+            "NÓMINA": [
+                "nomina.prenomina",
+                "nomina.asistencias"
+            ],
+            "PERIODOS": [
+                "periodos.gestion"
+            ],
+            "PRESTAMOS": [
+                "prestamos.gestion"
+            ],
+            "REPORTES": [
+                "reportes.ver"
+            ],
+            "MANTENIMIENTO": [
+                "mantenimiento.gestion"
+            ]
+        }
+
+        nombres_permisos = {
+            "empleados.gestion": "Gestionar Empleados",
+            "empleados.nfc": "Administrar NFC",
+            "empleados.usuarios": "Gestionar Usuarios",
+            "nomina.prenomina": "Generar Prenómina",
+            "nomina.asistencias": "Control de Asistencias",
+            "periodos.gestion": "Gestionar Periodos",
+            "prestamos.gestion": "Gestionar Prestamos",
+            "reportes.ver": "Ver Reportes",
+            "mantenimiento.gestion": "Mantenimiento del Sistema"
+        }
+
+        # Variables para los radio buttons
         self.permisos_vars = {}
-        permisos = self.db_manager.obtener_permisos_sistema()
+
+        # Crear tabla
+        row = 0
+        for modulo, funcionalidades in permisos_estructura.items():
+            ttk.Label(tabla_frame, text=modulo, font=('Helvetica', 9, 'bold')).grid(
+                row=row, column=0, columnspan=4, sticky='w', pady=(5,0), padx=5
+            )
+            row += 1
+            
+            for func in funcionalidades:
+                ttk.Label(tabla_frame, text=nombres_permisos[func]).grid(row=row, column=0, sticky='w', padx=5)
+                
+                var = tk.StringVar(value="sin_acceso")
+                self.permisos_vars[func] = var
+                
+                ttk.Radiobutton(tabla_frame, text="Sin Acceso", value="sin_acceso", variable=var).grid(row=row, column=1)
+                ttk.Radiobutton(tabla_frame, text="Personal", value="personal", variable=var).grid(row=row, column=2)
+                ttk.Radiobutton(tabla_frame, text="Global", value="global", variable=var).grid(row=row, column=3)
+                
+                row += 1
+
+        # Configurar scroll
+        tabla_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
-        for i, permiso in enumerate(permisos):
-            var = tk.BooleanVar()
-            self.permisos_vars[permiso['codigo']] = var
-            ttk.Checkbutton(permisos_frame, 
-                        text=permiso['descripcion'],
-                        variable=var).grid(row=i//3, column=i%3, padx=10, pady=2, sticky='w')
-        
-        # Frame para botones
-        botones_frame = ttk.Frame(self.scrollable_frame)
+
+        # En los botones del formulario de registro
+        botones_frame = ttk.Frame(self.main_frame)
         botones_frame.pack(fill=tk.X, pady=20)
-        
-        ttk.Button(botones_frame, text="Guardar", 
-                command=self.guardar_empleado).pack(side=tk.LEFT, padx=5)
-        ttk.Button(botones_frame, text="Cancelar",
-                command=self.destroy).pack(side=tk.LEFT, padx=5)
+
+        btn_guardar = tk.Button(
+            botones_frame, 
+            text="Guardar",
+            font=("Arial", 10, "bold"),
+            fg="#ffffff",
+            bg="#2596be",
+            activebackground="#1e7aa3", 
+            relief="flat",
+            cursor="hand2",
+            command=self.guardar_empleado
+        )
+        btn_guardar.pack(side=tk.LEFT, padx=5)
+
+        btn_cancelar = tk.Button(
+            botones_frame,
+            text="Cancelar", 
+            font=("Arial", 10, "bold"),
+            fg="#ffffff",
+            bg="#9A9EA1",
+            activebackground="#6C757D",
+            relief="flat",
+            cursor="hand2",
+            command=self.destroy
+        )
+        btn_cancelar.pack(side=tk.LEFT, padx=5)
         
     def limit_phone(self, event=None):
         value = self.telefono_entry.get()
@@ -343,6 +418,11 @@ class RegistroEmpleadoForm(tk.Toplevel):
 
         return ", ".join(filter(None, direccion_partes))
     
+    def validar_cedula(self, cedula):
+        """Validar que la cédula contenga solo números"""
+        if not cedula.isdigit():
+            raise ValueError("La cédula debe contener solo números")
+    
     def validar_telefono(self, numero):
         """Validar que el número de teléfono tenga el formato correcto"""
         # Eliminar espacios en blanco
@@ -373,6 +453,15 @@ class RegistroEmpleadoForm(tk.Toplevel):
     def guardar_empleado(self):
         """Guardar el nuevo empleado"""
         try:
+            # Validar cédula
+            cedula = self.cedula_entry.get().strip()
+            try:
+                self.validar_cedula(cedula)
+                cedula_completa = self.nacionalidad_var.get() + cedula
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+                self.cedula_entry.focus()
+                return
             # Validar edad mínima
             fecha_nacimiento = self.fecha_nacimiento.get_date()
             self.validar_fecha_nacimiento(fecha_nacimiento)
@@ -404,14 +493,15 @@ class RegistroEmpleadoForm(tk.Toplevel):
             datos = {
                 'nombre': self.nombre_entry.get().strip(),
                 'apellido': self.apellido_entry.get().strip(),
-                'cedula': self.nacionalidad_var.get() + self.cedula_entry.get().strip(),
-                'telefono': telefono_completo,  # Agregamos el teléfono a los datos
+                'cedula': cedula_completa,
+                'telefono': telefono_completo, 
                 'cargo': self.cargo_var.get(),
                 'salario': float(self.salario_entry.get().strip()),
                 'fecha_contratacion': self.fecha_contratacion.get_date(),
                 'fecha_nacimiento': fecha_nacimiento,
                 'uid_tarjeta': self.uid_nfc_var.get().split(' - ')[0] if self.uid_nfc_var.get() else None,
-                'permisos': [codigo for codigo, var in self.permisos_vars.items() if var.get()],
+                'permisos': [codigo for codigo, var in self.permisos_vars.items() 
+                            if var.get() != 'sin_acceso'],
                 'direccion': self.obtener_direccion_completa()
             }
             
@@ -448,6 +538,24 @@ class RegistroEmpleadoForm(tk.Toplevel):
             
             # Registrar empleado
             self.db_manager.registrar_empleado_con_nfc(**datos)
+
+            # Crear detalle para auditoria
+            detalle = (
+                f"Nuevo empleado registrado:\n"
+                f"Nombre: {datos['nombre']} {datos['apellido']}\n"
+                f"Cédula: {datos['cedula']}\n"
+                f"Cargo: {datos['cargo']}\n"
+                f"Salario: {datos['salario']}"
+            )
+
+            # Registrar auditoria
+            self.db_manager.registrar_auditoria(
+                usuario=f"{self.parent.usuario_actual['nombre']} {self.parent.usuario_actual['apellido']}",
+                rol=f"{self.parent.usuario_actual['rol']}",
+                accion='Registró Empleado',
+                tabla='empleados',
+                detalle=detalle
+            )
             
             messagebox.showinfo(
                 "Éxito",
@@ -461,18 +569,7 @@ class RegistroEmpleadoForm(tk.Toplevel):
                 self.parent.cargar_empleados()
                 
             self.destroy()
-            
-        except ValueError as e:
-            if "fecha" in str(e).lower():
-                messagebox.showerror(
-                    "Error", 
-                    "Por favor verifique las fechas ingresadas"
-                )
-            else:
-                messagebox.showerror(
-                    "Error", 
-                    "Por favor verifique los valores ingresados"
-                )
+
         except Exception as e:
             messagebox.showerror(
                 "Error", 

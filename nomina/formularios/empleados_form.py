@@ -3,18 +3,23 @@ from formularios.registro_empleados_form import RegistroEmpleadoForm
 from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
 from datetime import datetime, date
+from util.ayuda import Ayuda
 import traceback
 
 class EmpleadoDetallesForm(tk.Toplevel):
     """Formulario para ver/editar detalles del empleado"""
     def __init__(self, parent, db_manager, empleado_id):
         super().__init__(parent)
+        self.parent = parent
         self.db_manager = db_manager
         self.empleado_id = empleado_id
-        
+
+        # Obtener la ventana raíz
+        self.root = self.winfo_toplevel()
+
         # Configuración básica
         self.title("Detalles del Empleado")
-        self.geometry("800x700")
+        self.geometry("800x600")
         
         # Frame principal con scroll
         self.main_frame = ttk.Frame(self)
@@ -23,23 +28,6 @@ class EmpleadoDetallesForm(tk.Toplevel):
         # Frame de contenido
         self.content_frame = ttk.Frame(self.main_frame, padding="20")
         self.content_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Canvas y scrollbar
-        self.canvas = tk.Canvas(self.content_frame)
-        self.scrollbar = ttk.Scrollbar(self.content_frame, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas)
-
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
-        # Empaquetar canvas y scrollbar
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
 
         # Variables para los campos de dirección
         self.estado_var = tk.StringVar()
@@ -57,20 +45,70 @@ class EmpleadoDetallesForm(tk.Toplevel):
         self.botones_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=10)
         
         # Botones
-        self.btn_editar = ttk.Button(self.botones_frame, text="Editar",
-                                command=self.activar_edicion)
+        self.btn_editar = tk.Button(
+            self.botones_frame, 
+            text="Editar",
+            font=("Arial", 10, "bold"),
+            fg="#ffffff",
+            bg="#0D6EFD",
+            activebackground="#0B5ED7",
+            activeforeground="#ffffff",
+            relief="flat",
+            cursor="hand2",
+            width=12,
+            pady=8,
+            command=self.activar_edicion
+        )
         self.btn_editar.pack(side=tk.LEFT, padx=5)
-        
-        self.btn_guardar = ttk.Button(self.botones_frame, text="Guardar",
-                                    command=self.guardar_cambios, state='disabled')
+
+        self.btn_guardar = tk.Button(
+            self.botones_frame,
+            text="Guardar",
+            font=("Arial", 10, "bold"), 
+            fg="#ffffff",
+            bg="#198754",
+            activebackground="#157347",
+            activeforeground="#ffffff",
+            relief="flat",
+            cursor="hand2",
+            width=12,
+            pady=8,
+            state='disabled',
+            command=self.guardar_cambios
+        )
         self.btn_guardar.pack(side=tk.LEFT, padx=5)
-        
-        self.btn_cancelar = ttk.Button(self.botones_frame, text="Cancelar",
-                                    command=self.cancelar_edicion, state='disabled')
+
+        self.btn_cancelar = tk.Button(
+            self.botones_frame,
+            text="Cancelar",
+            font=("Arial", 10, "bold"),
+            fg="#ffffff", 
+            bg="#6C757D",
+            activebackground="#5C636A",
+            activeforeground="#ffffff",
+            relief="flat",
+            cursor="hand2",
+            width=12,
+            pady=8,
+            state='disabled',
+            command=self.cancelar_edicion
+        )
         self.btn_cancelar.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(self.botones_frame, text="Cerrar",
-                command=self.destroy).pack(side=tk.RIGHT, padx=5)
+
+        tk.Button(
+            self.botones_frame,
+            text="Cerrar",
+            font=("Arial", 10, "bold"),
+            fg="#ffffff",
+            bg="#DC3545",
+            activebackground="#BB2D3B",
+            activeforeground="#ffffff",
+            relief="flat",
+            cursor="hand2",
+            width=12,
+            pady=8,
+            command=self.destroy
+        ).pack(side=tk.RIGHT, padx=5)
         
         # Cargar datos del empleado
         self.cargar_datos()
@@ -78,7 +116,7 @@ class EmpleadoDetallesForm(tk.Toplevel):
     def crear_campos(self):
         """Crear los campos del formulario"""
         # Frame contenedor para primera fila (datos personales y dirección)
-        top_container = ttk.Frame(self.scrollable_frame)
+        top_container = ttk.Frame(self.main_frame)
         top_container.pack(fill=tk.X, padx=5, pady=5)
             
         # Frame para datos personales
@@ -163,7 +201,7 @@ class EmpleadoDetallesForm(tk.Toplevel):
         self.referencia_entry.grid(row=5, column=1, sticky='w', padx=5, pady=5)
 
         # Frame para dispositivos NFC (debajo de datos y dirección)
-        nfc_frame = ttk.LabelFrame(self.scrollable_frame, text="Dispositivos NFC", padding="5")
+        nfc_frame = ttk.LabelFrame(self.main_frame, text="Dispositivos NFC", padding="5")
         nfc_frame.pack(fill=tk.X, padx=5, pady=5)
         
         # Crear Treeview para dispositivos NFC
@@ -186,8 +224,8 @@ class EmpleadoDetallesForm(tk.Toplevel):
         
         ttk.Button(nfc_buttons_frame, text="Agregar Tarjeta",
                 command=self.agregar_tarjeta).pack(side=tk.LEFT, padx=5)
-        ttk.Button(nfc_buttons_frame, text="Remover Dispositivo",
-                command=self.remover_dispositivo).pack(side=tk.LEFT, padx=5)
+        ttk.Button(nfc_buttons_frame, text="Remover Tarjeta",
+                command=self.remover_tarjeta).pack(side=tk.LEFT, padx=5)
 
         # Bindings para actualizar comboboxes
         self.estado_combo.bind('<<ComboboxSelected>>', self.actualizar_municipios)
@@ -371,7 +409,7 @@ class EmpleadoDetallesForm(tk.Toplevel):
                 # Salario
                 self.entradas["salario"].configure(state='normal')
                 self.entradas["salario"].delete(0, tk.END)
-                self.entradas["salario"].insert(0, f"{float(empleado['salario']):,.2f}")
+                self.entradas["salario"].insert(0, f"Bs. {float(empleado['salario']):,.2f}")
                 self.entradas["salario"].configure(state='disabled')
                 
                 # Status
@@ -437,7 +475,7 @@ class EmpleadoDetallesForm(tk.Toplevel):
         
         self.combo_cargo = ttk.Combobox(
             parent,
-            values=["Gerente", "Supervisor", "Analista", "Empleado"],
+            values=["Gerente", "Analista", "Empleado"],
             state="readonly",
             width=30
         )
@@ -548,8 +586,32 @@ class EmpleadoDetallesForm(tk.Toplevel):
                 )
                 return
             
-            # Actualizar en la base de datos
+            # Obtener datos originales
+            empleado_original = self.db_manager.obtener_empleado(self.empleado_id)
+            
+            # Actualizar empleado
             self.db_manager.actualizar_empleado(self.empleado_id, datos)
+
+            # Crear detalle identificando cambios
+            cambios = []
+            if empleado_original['cargo'] != datos['cargo']:
+                cambios.append(f"Cargo: {empleado_original['cargo']} -> {datos['cargo']}")
+            if empleado_original['salario'] != datos['salario']:
+                cambios.append(f"Salario: {empleado_original['salario']} -> {datos['salario']}")
+            if empleado_original['telefono'] != datos['telefono']:
+                cambios.append(f"Teléfono: {empleado_original['telefono']} -> {datos['telefono']}")
+            if empleado_original['direccion'] != datos['direccion']:
+                cambios.append(f"Dirección actualizada")
+
+            detalle = f"Actualización de empleado ID: {self.empleado_id}\n" + "\n".join(cambios)
+
+            # Registrar auditoria
+            self.db_manager.registrar_auditoria(
+                usuario = f"{self.parent.usuario_actual['nombre']} {self.parent.usuario_actual['apellido']}",
+                accion = 'Actualizó empleado',
+                tabla = 'empleados',
+                detalle = detalle
+            )
             
             messagebox.showinfo("Éxito", "Datos actualizados correctamente")
             self.desactivar_edicion()
@@ -570,6 +632,14 @@ class EmpleadoDetallesForm(tk.Toplevel):
     
     def agregar_tarjeta(self):
         """Agregar una nueva tarjeta NFC al empleado"""
+        # Verificar si ya tiene una tarjeta asignada
+        tarjetas_actuales = self.nfc_tree.get_children()
+        if tarjetas_actuales:
+            messagebox.showwarning(
+                "Advertencia", 
+                "El empleado ya tiene una tarjeta asignada. Debe remover la actual antes de asignar una nueva.")
+            return
+
         dialog = tk.Toplevel(self)
         dialog.title("Agregar Tarjeta NFC")
         dialog.geometry("400x200")
@@ -594,9 +664,21 @@ class EmpleadoDetallesForm(tk.Toplevel):
                 messagebox.showwarning("Advertencia", "Por favor seleccione una tarjeta válida")
                 return
             
-            id_dispositivo = tarjetas_combo.get().split(' - ')[0]
+            id_dispositivo, uid = tarjetas_combo.get().split(' - ')
             try:
                 self.db_manager.asignar_dispositivo(self.empleado_id, id_dispositivo)
+                # Registrar en auditoria
+                empleado = self.db_manager.obtener_empleado(self.empleado_id)
+                detalle = (f"Tarjeta NFC asignada al empleado: {empleado['nombre']} {empleado['apellido']}\n"
+                        f"UID de tarjeta: {uid}\n"
+                        f"ID dispositivo: {id_dispositivo}")
+                
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.parent.usuario_actual['nombre']} {self.parent.usuario_actual['apellido']}",
+                    accion='Asignó tarjeta',
+                    tabla='empleado_nfc',
+                    detalle=detalle)
+
                 messagebox.showinfo("Éxito", "Tarjeta asignada correctamente")
                 self.cargar_datos()
                 dialog.destroy()
@@ -606,11 +688,11 @@ class EmpleadoDetallesForm(tk.Toplevel):
         ttk.Button(frame, text="Confirmar", command=confirmar).pack(pady=10)
         ttk.Button(frame, text="Cancelar", command=dialog.destroy).pack(pady=5)
 
-    def remover_dispositivo(self):
-        """Remover un dispositivo NFC seleccionado"""
+    def remover_tarjeta(self):
+        """Remover tarjeta NFC seleccionado"""
         selected = self.nfc_tree.selection()
         if not selected:
-            messagebox.showwarning("Advertencia", "Por favor seleccione un dispositivo")
+            messagebox.showwarning("Advertencia", "Por favor seleccione una tarjeta")
             return
             
         item = self.nfc_tree.item(selected[0])
@@ -620,17 +702,43 @@ class EmpleadoDetallesForm(tk.Toplevel):
         if messagebox.askyesno("Confirmar", f"¿Está seguro de remover este {tipo}?"):
             try:
                 self.db_manager.desasignar_dispositivo(self.empleado_id, uid)
+                # Registrar en auditoria
+                empleado = self.db_manager.obtener_empleado(self.empleado_id)
+                detalle = (f"Tarjeta NFC removida del empleado: {empleado['nombre']} {empleado['apellido']}\n"
+                        f"UID de tarjeta: {uid}")
+                
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.parent.usuario_actual['nombre']} {self.parent.usuario_actual['apellido']}",
+                    accion='Eliminó',
+                    tabla='empleado_nfc',
+                    detalle=detalle)
+
                 messagebox.showinfo("Éxito", "Dispositivo removido correctamente")
                 self.cargar_datos()
             except Exception as e:
                 messagebox.showerror("Error", f"Error al remover dispositivo: {str(e)}")
 
 class EmpleadosForm(ttk.Frame):
-    def __init__(self, parent, db_manager):
+    def __init__(self, parent, db_manager, usuario_actual):
         super().__init__(parent)
         self.db_manager = db_manager
+        self.usuario_actual = usuario_actual
+        self.sistema_ayuda = Ayuda()
+
+        self.bind_all('<F1>', self.mostrar_ayuda)
         
         self.pack(fill=tk.BOTH, expand=True)
+
+        # Verificar permisos
+        alcance = self.db_manager.verificar_permiso(
+            usuario_actual['id_usuario'], 
+            'empleados.gestion'
+        )
+
+        if not alcance or alcance != 'GLOBAL':
+            messagebox.showerror("Error", "No tienes los permisos suficientes para ingresar a este módulo.")
+            self.destroy()
+            return
         
         # Frame principal
         main_frame = ttk.Frame(self, padding="10")
@@ -692,13 +800,11 @@ class EmpleadosForm(ttk.Frame):
         
         # Configurar Scrollbars
         vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        hsb = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
-        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self.tree.configure(yscrollcommand=vsb.set)
         
         # Empaquetar Treeview y Scrollbars
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        hsb.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Configurar tags de colores
         self.tree.tag_configure('inactivo', foreground='gray')
@@ -725,6 +831,10 @@ class EmpleadosForm(ttk.Frame):
         
         # Cargar los empleados
         self.cargar_empleados()
+
+    def mostrar_ayuda(self, event=None):
+        """Muestra la ayuda contextual del módulo de empleados"""
+        self.sistema_ayuda.mostrar_ayuda('empleados')
 
     def abrir_registro(self):
         """Abrir formulario de registro de nuevo empleado"""
@@ -755,70 +865,146 @@ class EmpleadosForm(ttk.Frame):
         detalles_form.grab_set()
 
     def cambiar_status(self):
-        """Cambiar el status del empleado seleccionado"""
         selected = self.tree.selection()
         if not selected:
             messagebox.showwarning("Advertencia", "Por favor seleccione un empleado")
             return
             
         item = self.tree.item(selected[0])
-        id_empleado = item['values'][0]  # ID es la primera columna
-        nombre_empleado = f"{item['values'][1]} {item['values'][2]}"  # Nombre y Apellido
+        id_empleado = item['values'][0]
+        nombre_empleado = f"{item['values'][1]} {item['values'][2]}"
         status_actual = item['values'][7] if len(item['values']) > 7 else 'activo'
         
-        # Crear ventana de diálogo para el cambio de status
         dialog = tk.Toplevel(self)
         dialog.title("Cambiar Status de Empleado")
-        dialog.geometry("400x400")
-        dialog.grab_set()  # Hacer la ventana modal
+        dialog.geometry("500x600")
+        dialog.grab_set()
         
-        # Frame principal
-        main_frame = ttk.Frame(dialog, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
+        # Frame principal con padding
+        main_container = ttk.Frame(dialog)
+        main_container.pack(fill=tk.BOTH, expand=True)
+
+        # Título y subtítulo
+        title_frame = ttk.Frame(main_container)
+        title_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        ttk.Label(
+            title_frame,
+            text="Cambio de Status",
+            font=("Arial", 16, "bold"),
+            foreground="#2596be"
+        ).pack()
+
+        ttk.Label(
+            title_frame,
+            text="Por favor complete la siguiente información",
+            font=("Arial", 10),
+            foreground="#666666",
+            wraplength=400
+        ).pack(pady=(5,15))
+
+        # Frame para el formulario
+        form_frame = ttk.LabelFrame(main_container, text="Información del Cambio", padding="15")
+        form_frame.pack(fill=tk.X, pady=10, padx=20)
+
         # Información del empleado
-        ttk.Label(main_frame, text=f"Empleado: {nombre_empleado}").pack(fill=tk.X, pady=5)
-        ttk.Label(main_frame, text=f"Status actual: {status_actual}").pack(fill=tk.X, pady=5)
-        
+        ttk.Label(form_frame, text="Empleado:", font=("Arial", 10, "bold")).pack(anchor="w")
+        ttk.Label(form_frame, text=nombre_empleado, foreground="#666666").pack(anchor="w", pady=(0,10))
+
+        ttk.Label(form_frame, text="Status Actual:", font=("Arial", 10, "bold")).pack(anchor="w")
+        ttk.Label(form_frame, text=status_actual, foreground="#666666").pack(anchor="w", pady=(0,10))
+
         # Nuevo status
-        ttk.Label(main_frame, text="Nuevo status:").pack(fill=tk.X, pady=5)
+        ttk.Label(form_frame, text="Nuevo Status:", font=("Arial", 10, "bold")).pack(anchor="w")
         nuevo_status = tk.StringVar(value='activo' if status_actual == 'inactivo' else 'inactivo')
-        status_combo = ttk.Combobox(main_frame, 
-                                textvariable=nuevo_status,
-                                values=['activo', 'inactivo'],
-                                state='readonly')
-        status_combo.pack(fill=tk.X, pady=5)
-        
+        status_combo = ttk.Combobox(
+            form_frame, 
+            textvariable=nuevo_status,
+            values=['activo', 'inactivo'],
+            state='readonly',
+            width=50
+        )
+        status_combo.pack(fill=tk.X, pady=(0,10))
+
         # Tipo de motivo
-        ttk.Label(main_frame, text="Tipo de motivo:").pack(fill=tk.X, pady=5)
+        ttk.Label(form_frame, text="Tipo de Motivo:", font=("Arial", 10, "bold")).pack(anchor="w")
         tipo_motivo = tk.StringVar(value="Otros")
         motivos = ["Vacaciones", "Permiso Laboral", "Licencia Médica", "Otros"]
-        motivo_combo = ttk.Combobox(main_frame, 
-                                textvariable=tipo_motivo,
-                                values=motivos,
-                                state='readonly')
-        motivo_combo.pack(fill=tk.X, pady=5)
-        
-        # Descripción del motivo
-        ttk.Label(main_frame, text="Descripción:").pack(fill=tk.X, pady=5)
-        motivo_text = tk.Text(main_frame, height=4, width=40)
-        motivo_text.pack(fill=tk.X, pady=5)
+        motivo_combo = ttk.Combobox(
+            form_frame, 
+            textvariable=tipo_motivo,
+            values=motivos,
+            state='readonly',
+            width=50
+        )
+        motivo_combo.pack(fill=tk.X, pady=(0,10))
+
+        # Descripción
+        ttk.Label(form_frame, text="Descripción:", font=("Arial", 10, "bold")).pack(anchor="w")
+        motivo_text = tk.Text(form_frame, height=4, width=50)
+        motivo_text.pack(fill=tk.X, pady=(0,10))
+
+        # Frame para botones
+        button_frame = ttk.Frame(form_frame)
+        button_frame.pack(fill=tk.X, pady=(20,0))
+
+        # Botones con estilo moderno
+        confirmar_btn = tk.Button(
+            button_frame,
+            text="Confirmar Cambio",
+            font=("Arial", 10, "bold"),
+            fg="#ffffff",
+            bg="#2596be",
+            activebackground="#1e7aa3",
+            relief="flat",
+            cursor="hand2",
+            command=lambda: confirmar_cambio()
+        )
+        confirmar_btn.pack(pady=10)
+
+        cancelar_btn = tk.Button(
+            button_frame,
+            text="Cancelar",
+            font=("Arial", 10),
+            fg="#666666",
+            bg="#ffffff",
+            activebackground="#f0f0f0",
+            relief="flat",
+            cursor="hand2",
+            command=dialog.destroy
+        )
+        cancelar_btn.pack()
         
         def confirmar_cambio():
             if not motivo_text.get("1.0", tk.END).strip():
-                messagebox.showwarning("Advertencia", 
-                                    "Por favor ingrese una descripción del motivo")
+                messagebox.showwarning("Advertencia", "Por favor ingrese una descripción del motivo")
                 return
                 
             try:
+                # Guardar status anterior
+                empleado = self.db_manager.obtener_empleado(id_empleado)
+                status_actual = empleado['status']
+
                 motivo_completo = f"{tipo_motivo.get()}: {motivo_text.get('1.0', tk.END).strip()}"
                 self.db_manager.cambiar_status_empleado(
                     id_empleado,
                     nuevo_status.get(),
                     motivo_completo
                 )
-                messagebox.showinfo("Éxito", 
-                                f"Status del empleado actualizado a {nuevo_status.get()}")
+
+                # Registrar en auditoría
+                detalle = (f"Cambio de status de empleado ID: {id_empleado} "
+                        f"de {status_actual} a {nuevo_status.get()}. "
+                        f"Motivo: {motivo_completo}")
+
+                self.db_manager.registrar_auditoria(
+                    usuario=f"{self.usuario_actual['nombre']} {self.usuario_actual['apellido']}",
+                    accion='Cambió status',
+                    tabla='empleados',
+                    detalle=detalle
+                )
+
+                messagebox.showinfo("Éxito", f"Status del empleado actualizado a {nuevo_status.get()}")
                 dialog.destroy()
                 self.cargar_empleados()  # Actualizar la lista
             except Exception as e:
@@ -844,7 +1030,7 @@ class EmpleadosForm(ttk.Frame):
             for emp in empleados:
                 valores = list(emp)
                 # Formatear salario
-                valores[5] = f"{float(valores[5]):,.2f}"
+                valores[5] = f"Bs. {float(valores[5]):,.2f}"
                 
                 # Agregar estado si no existe
                 status = valores[7] if len(valores) > 7 else 'activo'
@@ -867,7 +1053,7 @@ class EmpleadosForm(ttk.Frame):
             empleados = self.db_manager.ver_empleados()
             for emp in empleados:
                 valores = list(emp)
-                valores[5] = f"{float(valores[5]):,.2f}"  # Formatear salario
+                valores[5] = f"Bs. {float(valores[5]):,.2f}"  # Formatear salario
                 status = valores[7] if len(valores) > 7 else 'activo'
                 if len(valores) <= 7:
                     valores.append(status)
