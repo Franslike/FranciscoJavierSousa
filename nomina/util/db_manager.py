@@ -126,19 +126,6 @@ class DatabaseManager:
         WHERE u.usuario = %s
         """
         return self.ejecutar_query(query, params=(usuario,), fetchone=True, dictionary=True)
-    
-    def registrar_empleado(self, nombre, cargo, salario, uid_nfc, fecha_contratacion, 
-                      cedula_identidad, apellido, direccion=None, fecha_nacimiento=None):
-        
-        query = """
-        INSERT INTO empleados (
-        nombre, cargo, salario, uid_nfc, fecha_contratacion,
-        cedula_identidad, apellido, direccion, fecha_nacimiento
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        self.ejecutar_query(query, (nombre, cargo, salario, uid_nfc, fecha_contratacion,
-                                    cedula_identidad, apellido, direccion, fecha_nacimiento), commit=True)
-        print("Empleado registrado exitosamente")
         
     def verificar_empleado_existente(self, cedula):
 
@@ -151,12 +138,15 @@ class DatabaseManager:
         return self.ejecutar_query(query, (uid,), fetchone=True) is not None
     
     def obtener_dispositivos_empleado(self, id_empleado):
-
+        """
+        Obtener los dispositivos NFC asignados a un empleado, incluyendo los suspendidos
+        """
         query = """
         SELECT n.tipo, n.uid, n.estado
         FROM nfc_dispositivos n
         JOIN empleado_nfc en ON n.id_dispositivo = en.id_dispositivo
-        WHERE en.id_empleado = %s AND en.activo = TRUE
+        WHERE en.id_empleado = %s 
+        AND (en.activo = TRUE OR n.estado = 'suspendido')
         """
         return self.ejecutar_query(query, (id_empleado,), dictionary=True)
 
@@ -387,16 +377,9 @@ class DatabaseManager:
                 status_actual,
                 nuevo_status,
                 motivo))
-            
-            self.registrar_auditoria(
-                usuario='sistema',  # O pasar el usuario como parámetro adicional
-                accion='UPDATE',
-                tabla='empleados',
-                detalle=(f"Cambio de status de empleado ID: {id_empleado} "
-                        f"de {status_actual} a {nuevo_status}. "
-                        f"Motivo: {motivo}"))
+                    
             connection.commit()
-            
+
         except Exception as e:
             if connection:
                 connection.rollback()
@@ -444,7 +427,7 @@ class DatabaseManager:
         query += """
         )
         SELECT 
-            dl.fecha,
+            DATE_FORMAT (dl.fecha, '%d-%m-%Y') as fecha,
             CONCAT(e.nombre, ' ', e.apellido) as empleado,
             e.cedula_identidad,
             TIME(a.entrada) as hora_entrada,
@@ -535,7 +518,9 @@ class DatabaseManager:
         return self.ejecutar_query(query, params=(cedula, fecha), fetchone=True)
         
     def obtener_inasistencias_empleado(self, id_empleado, fecha_inicio, fecha_fin):
-
+        """
+        Obtiene las inasistencias del empleado incluyendo días sin registro y días con menos de 4 horas trabajadas
+        """
         query = """
         WITH RECURSIVE calendario AS (
             SELECT CAST(%s AS DATE) AS fecha
@@ -548,23 +533,41 @@ class DatabaseManager:
             SELECT fecha
             FROM calendario
             WHERE DAYOFWEEK(fecha) NOT IN (1, 7)
+        ),
+        asistencias_calculadas AS (
+            SELECT 
+                dl.fecha,
+                a.id,
+                a.entrada,
+                a.salida,
+                a.estado,
+                CASE 
+                    WHEN a.entrada IS NOT NULL AND a.salida IS NOT NULL THEN
+                        TIMESTAMPDIFF(HOUR, a.entrada, a.salida)
+                    ELSE 0
+                END as horas_trabajadas
+            FROM dias_laborables dl
+            LEFT JOIN asistencias a ON DATE(a.entrada) = dl.fecha
+                AND a.id_empleado = %s
         )
-        SELECT 
+        SELECT
             COUNT(*) as total_inasistencias,
-            GROUP_CONCAT(dl.fecha) as fechas
-        FROM dias_laborables dl
-        LEFT JOIN asistencias a ON DATE(a.entrada) = dl.fecha 
-            AND a.id_empleado = %s
-        WHERE (a.id IS NULL OR a.salida IS NULL)
+            GROUP_CONCAT(fecha) as fechas
+        FROM asistencias_calculadas
+        WHERE (id IS NULL OR salida IS NULL OR horas_trabajadas < 4)
             AND NOT EXISTS (
-                SELECT 1 FROM asistencias 
-                WHERE id_empleado = %s 
-                AND DATE(entrada) = dl.fecha 
+                SELECT 1 FROM asistencias
+                WHERE id_empleado = %s
+                AND DATE(entrada) = fecha
                 AND estado = 'justificada'
             )
         """
         # Ejecutar el query y obtener el resultado
-        result = self.ejecutar_query(query, params=(fecha_inicio, fecha_fin, id_empleado, id_empleado), fetchone=True)
+        result = self.ejecutar_query(
+            query, 
+            params=(fecha_inicio, fecha_fin, id_empleado, id_empleado),
+            fetchone=True
+        )
 
         # Manejar el resultado
         if result:
@@ -614,7 +617,8 @@ class DatabaseManager:
     def obtener_periodos(self):
 
         query= """
-        SELECT id_periodo, tipo, fecha_inicio, fecha_fin, estado, creado_por
+        SELECT id_periodo, tipo, DATE_FORMAT (fecha_inicio, '%d-%m-%Y') as fecha_inicio, DATE_FORMAT (fecha_fin, '%d-%m-%Y') as fecha_fin,
+        estado, creado_por
         FROM periodos_nomina
         ORDER BY fecha_inicio DESC
         """
@@ -651,11 +655,38 @@ class DatabaseManager:
             historial_query,
             params=(id_periodo, estado_actual[0], cerrado_por, motivo),
             commit=True)
+            
+    def insertar_nomina(self, data):
+        query = """
+        INSERT INTO nominas (
+            id_empleado, id_periodo, salario_bruto, deducciones, 
+            salario_neto, total_dias, salario_base, dias_trabajados,
+            dias_descanso, bono_asistencia, seguro_social, rpe,
+            ley_pol_hab, deduccion_inasistencias, cantidad_inasistencias,
+            prestamos_deducidos, total_asignaciones, procesada_por
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+        )
+        """
+        total_dias = data['dias_trabajados'] + data['dias_descanso']
+        total_deducciones = (data['seguro_social'] + data['rpe'] + data['ley_pol_hab'] + 
+                            data['valor_inasistencias'] + data['prestamos'])
+        
+        valores = (
+            data['id_empleado'], data['id_periodo'], data['salario_base'], 
+            total_deducciones, data['total_pagar'], total_dias, data['salario_base'],
+            data['dias_trabajados'], data['dias_descanso'], data['bonificaciones'],
+            data['seguro_social'], data['rpe'], data['ley_pol_hab'],
+            data['valor_inasistencias'], data['num_inasistencias'],
+            data['prestamos'], data['total_asignaciones'], data['procesada_por']
+        )
+        
+        return self.ejecutar_query(query, params=valores, commit=True)
 
     def obtener_historial_periodo(self, id_periodo):
 
         query = """
-        SELECT fecha_cambio, estado_anterior, estado_nuevo, usuario_id, motivo
+        SELECT DATE_FORMAT (fecha_cambio, '%d-%m-%Y %H:%i') as fecha_cambio, estado_anterior, estado_nuevo, usuario_id, motivo
         FROM historial_periodos
         WHERE id_periodo = %s
         ORDER BY fecha_cambio DESC
@@ -674,7 +705,6 @@ class DatabaseManager:
     def registrar_empleado_con_nfc(self, nombre, apellido, cedula, telefono, cargo, salario, 
                                 fecha_contratacion, direccion, fecha_nacimiento,
                                 uid_tarjeta, uid_telefono=None, permisos=None):
-        
         # Mapeo de cargos a roles
         CARGO_TO_ROL = {
             'Gerente': 'gerente',
@@ -745,7 +775,7 @@ class DatabaseManager:
                     VALUES (%s, %s)
                     """
                     cursor.execute(query_relacion, (id_empleado, uid_tarjeta))
-                
+           
                 connection.commit()
                 return id_empleado
                 
@@ -817,14 +847,28 @@ class DatabaseManager:
             raise
 
     def obtener_todas_tarjetas(self):
-
         """Obtener lista de todas las tarjetas con información de asignación"""
         query = """
         SELECT n.*, 
-            CONCAT(e.nombre, ' ', e.apellido) as empleado
+            CASE 
+                WHEN n.estado = 'suspendido' THEN (
+                    SELECT CONCAT(e.nombre, ' ', e.apellido)
+                    FROM empleado_nfc en
+                    JOIN empleados e ON en.id_empleado = e.id_empleado
+                    WHERE en.id_dispositivo = n.id_dispositivo
+                    ORDER BY en.fecha_asignacion DESC
+                    LIMIT 1
+                )
+                WHEN n.estado = 'asignado' THEN (
+                    SELECT CONCAT(e.nombre, ' ', e.apellido)
+                    FROM empleado_nfc en
+                    JOIN empleados e ON en.id_empleado = e.id_empleado
+                    WHERE en.id_dispositivo = n.id_dispositivo
+                    AND en.activo = TRUE
+                )
+                ELSE 'No asignado'
+            END as empleado
         FROM nfc_dispositivos n
-        LEFT JOIN empleado_nfc en ON n.id_dispositivo = en.id_dispositivo AND en.activo = TRUE
-        LEFT JOIN empleados e ON en.id_empleado = e.id_empleado
         WHERE n.tipo = 'tarjeta'
         ORDER BY n.fecha_registro DESC
         """
@@ -870,29 +914,44 @@ class DatabaseManager:
 
     def eliminar_tarjeta(self, id_dispositivo):
         """Eliminar una tarjeta no asignada"""
-        query = """
-        DELETE FROM nfc_dispositivos 
-        WHERE id_dispositivo = %s 
-        AND estado = 'disponible'
-        """
+        connection = self.connect()
+        if not connection:
+            raise ValueError("No se pudo conectar a la base de datos.")
+        
         try:
-            connection = self.connect()
-            if not connection:
-                raise ValueError("No se pudo conectar a la base de datos.")
-            
-            # Ejecutar el query
             cursor = connection.cursor()
-            cursor.execute(query, (id_dispositivo,))
-            connection.commit()
-
-            # Verificar si se eliminó alguna tarjeta
+            connection.start_transaction()
+            
+            # Eliminar registros en este orden:
+            # 1. historial_nfc
+            cursor.execute("""
+                DELETE FROM historial_nfc 
+                WHERE id_dispositivo = %s
+            """, (id_dispositivo,))
+            
+            # 2. empleado_nfc
+            cursor.execute("""
+                DELETE FROM empleado_nfc 
+                WHERE id_dispositivo = %s
+            """, (id_dispositivo,))
+            
+            # 3. nfc_dispositivos
+            cursor.execute("""
+                DELETE FROM nfc_dispositivos 
+                WHERE id_dispositivo = %s 
+                AND estado = 'disponible'
+            """, (id_dispositivo,))
+            
             if cursor.rowcount == 0:
                 raise Exception("No se puede eliminar una tarjeta asignada")
-        except Error as e:
-            print(f"Error al eliminar tarjeta: {e}")
+                
+            connection.commit()
+            
+        except Exception as e:
+            connection.rollback()
             raise
         finally:
-            if connection and connection.is_connected():
+            if connection.is_connected():
                 cursor.close()
                 connection.close()
 
@@ -995,6 +1054,34 @@ class DatabaseManager:
                 cursor.close()
                 connection.close()
 
+    def puede_solicitar_prestamo(self, id_empleado):
+        """
+        Verifica si un empleado puede solicitar un nuevo préstamo.
+        Retorna (puede_solicitar: bool, mensaje: str)
+        """
+        # Verificar préstamos activos o pendientes
+        query_actual = """
+        SELECT COUNT(*) FROM prestamos 
+        WHERE id_empleado = %s AND estado IN ('pendiente', 'aprobado', 'activo')
+        """
+        result = self.ejecutar_query(query_actual, (id_empleado,), fetchone=True)
+        if result[0] > 0:
+            return False, "Ya tiene un préstamo pendiente o activo."
+
+        # Verificar límite de rechazos mensuales
+        query_rechazos = """
+        SELECT COUNT(*) FROM prestamos 
+        WHERE id_empleado = %s 
+        AND estado = 'rechazado'
+        AND YEAR(fecha_solicitud) = YEAR(CURRENT_DATE)
+        AND MONTH(fecha_solicitud) = MONTH(CURRENT_DATE)
+        """
+        rechazos = self.ejecutar_query(query_rechazos, (id_empleado,), fetchone=True)[0]
+        if rechazos >= 3:
+            return False, "Ha alcanzado el límite de solicitudes rechazadas este mes."
+
+        return True, ""
+
     def registrar_prestamo(self, datos_prestamo):
         """Registrar un nuevo préstamo"""
         query = """
@@ -1074,7 +1161,7 @@ class DatabaseManager:
         """Obtener el historial de pagos de un préstamo"""
         query = """
         SELECT 
-            DATE_FORMAT(fecha_pago, '%Y-%m-%d') as fecha,
+            DATE_FORMAT(fecha_pago, '%d-%m-%Y') as fecha,
             monto_pagado as monto,
             COALESCE(CAST(id_nomina AS CHAR), 'Manual') as periodo,
             saldo_restante as saldo
@@ -1113,7 +1200,7 @@ class DatabaseManager:
             raise
 
     def rechazar_prestamo(self, id_prestamo, rechazado_por, motivo):
-        """Rechazar un préstamo"""
+        """Rechazar un préstamo y notificar"""
         try:
             connection = self.connect()
             cursor = connection.cursor()
@@ -1121,19 +1208,32 @@ class DatabaseManager:
             query = """
             UPDATE prestamos 
             SET estado = 'rechazado',
-                observaciones = CONCAT(COALESCE(observaciones, ''), '\nRechazado por: ', %s, '\nMotivo: ', %s),
+                observaciones = CONCAT(COALESCE(observaciones, ''), 
+                                    '\nRechazado por: ', %s, 
+                                    '\nMotivo: ', %s),
                 fecha_aprobacion = NOW()
             WHERE id_prestamo = %s AND estado = 'pendiente'
             """
             cursor.execute(query, (rechazado_por, motivo, id_prestamo))
             connection.commit()
+            
+            # Crear notificación
+            from util.notification_manager import NotificationManager
+            notification_manager = NotificationManager(self)
+            notification_manager.notificar_cambio_estado_prestamo(
+                id_prestamo, 
+                "rechazado",
+                rechazado_por,
+                motivo
+            )
+            
         finally:
             if connection.is_connected():
                 cursor.close()
                 connection.close()
 
     def aprobar_prestamo(self, id_prestamo, aprobado_por):
-        """Aprobar un préstamo"""
+        """Aprobar un préstamo y notificar"""
         try:
             connection = self.connect()
             cursor = connection.cursor()
@@ -1147,6 +1247,16 @@ class DatabaseManager:
             """
             cursor.execute(query, (aprobado_por, id_prestamo))
             connection.commit()
+            
+            # Crear notificación
+            from util.notification_manager import NotificationManager
+            notification_manager = NotificationManager(self)
+            notification_manager.notificar_cambio_estado_prestamo(
+                id_prestamo, 
+                "aprobado",
+                aprobado_por
+            )
+            
         finally:
             if connection.is_connected():
                 cursor.close()
@@ -1193,6 +1303,7 @@ class DatabaseManager:
                 nuevas_cuotas_pagadas = cuotas_pagadas + 1
 
                 # Registrar el pago
+                fecha_formateada = datetime.strptime(datos_pago['fecha'], '%d-%m-%Y').strftime('%Y-%m-%d')
                 query_pago = """
                 INSERT INTO prestamos_pagos 
                 (id_prestamo, fecha_pago, monto_pagado, saldo_restante)
@@ -1200,7 +1311,7 @@ class DatabaseManager:
                 """
                 cursor.execute(query_pago, (
                     id_prestamo,
-                    datos_pago['fecha'],
+                    fecha_formateada,  # Fecha formateada
                     monto_pago,
                     nuevo_saldo
                 ))
@@ -1231,9 +1342,75 @@ class DatabaseManager:
                 cursor.close()
                 connection.close()
 
-    def registrar_auditoria(self, usuario, accion, tabla, detalle):
+    def registrar_auditoria(self, usuario, rol, accion, tabla, detalle):
         query = """
-        INSERT INTO auditoria (usuario, accion, tabla, detalle)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO auditoria (usuario, rol, accion, tabla, detalle)
+        VALUES (%s, %s, %s, %s, %s)
         """
-        self.ejecutar_query(query, (usuario, accion, tabla, detalle), commit=True)
+        self.ejecutar_query(query, (usuario, rol, accion, tabla, detalle), commit=True)
+
+    def verificar_permiso(self, id_usuario: int, codigo_permiso: str, objeto_id: int = None) -> str:
+        """
+        Verifica el tipo de permiso de un usuario
+        
+        Returns:
+            str: 'GLOBAL', 'PERSONAL' o None si no tiene permiso
+        """
+        # Primero verificar el permiso específico y su alcance
+        query = """
+        SELECT up.alcance
+        FROM usuario_permisos up
+        JOIN permisos_sistema ps ON ps.id_permiso = up.id_permiso
+        WHERE up.id_usuario = %s AND ps.codigo = %s
+        """
+        
+        result = self.ejecutar_query(query, (id_usuario, codigo_permiso), fetchone=True)
+        if result:
+            return result[0]
+        
+        # Si no tiene permisos específicos, verificar si es admin o gerente
+        rol_query = "SELECT rol FROM usuarios WHERE id_usuario = %s"
+        rol_result = self.ejecutar_query(rol_query, (id_usuario,), fetchone=True)
+        
+        if rol_result and rol_result[0] in ['gerente', 'admin']:
+            return 'GLOBAL'
+            
+        return None
+    
+    def verificar_propiedad_objeto(self, id_usuario: int, objeto_id: int, codigo_permiso: str) -> bool:
+        """
+        Verifica si un objeto pertenece al usuario
+        
+        Args:
+            id_usuario: ID del usuario
+            objeto_id: ID del objeto
+            codigo_permiso: Código del permiso para determinar el tipo de objeto
+        
+        Returns:
+            bool: True si el objeto pertenece al usuario, False en caso contrario
+        """
+        categoria = codigo_permiso.split('.')[0]
+        
+        # Definir las verificaciones según la categoría
+        if categoria == 'prestamos':
+            query = """
+            SELECT COUNT(*) 
+            FROM prestamos p
+            JOIN empleados e ON p.id_empleado = e.id_empleado
+            JOIN usuarios u ON e.id_empleado = u.id_empleado
+            WHERE u.id_usuario = %s AND p.id_prestamo = %s
+            """
+        elif categoria == 'asistencias':
+            query = """
+            SELECT COUNT(*) 
+            FROM asistencias a
+            JOIN empleados e ON a.id_empleado = e.id_empleado
+            JOIN usuarios u ON e.id_empleado = u.id_empleado
+            WHERE u.id_usuario = %s AND a.id = %s
+            """
+        else:
+            # Para otros tipos de objetos
+            return False
+        
+        result = self.ejecutar_query(query, (id_usuario, objeto_id), fetchone=True)
+        return result[0] > 0 if result else False
